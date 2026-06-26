@@ -1,0 +1,5 @@
+{
+  "desktop": true,
+  "slack_webhook": "https://hooks.slack.com/services/YOUR/WEBHOOK/URL",
+  "slack_channel": "#second-brain"
+}
