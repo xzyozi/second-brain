@@ -26,6 +26,16 @@ import datetime
 import urllib.request
 import urllib.error
 from pathlib import Path
+import os
+import logging
+
+# loggerの設定
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+logger = logging.getLogger("notify")
 
 CONFIG_PATH  = Path("tools/.cache/notify-config.json")
 CACHE_SCORED = Path("tools/.cache/priority-cache.json")
@@ -91,6 +101,21 @@ def _build_daily_summary() -> str:
 
 
 # ── デスクトップ通知 ──────────────────────────────────────────────
+def is_wsl() -> bool:
+    """WSL環境（WSL1またはWSL2）かどうかを判定する"""
+    if os.path.exists("/proc/sys/fs/binfmt_misc/WSLInterop"):
+        return True
+    try:
+        with open("/proc/version", "r", encoding="utf-8") as f:
+            content = f.read().lower()
+            if "microsoft" in content or "wsl" in content:
+                return True
+    except Exception:
+        pass
+    return False
+
+
+# ── デスクトップ通知 ──────────────────────────────────────────────
 def notify_desktop(title: str, body: str) -> bool:
     import platform
     plat = platform.system()
@@ -107,6 +132,8 @@ def notify_desktop(title: str, body: str) -> bool:
             return True
 
         elif plat == "Linux":
+            if is_wsl():
+                return notify_desktop_wsl_to_windows(title, body)
             subprocess.run(
                 ["notify-send", "--urgency=normal", "--icon=dialog-information", title, body],
                 check=True, capture_output=True
@@ -129,7 +156,7 @@ def notify_desktop(title: str, body: str) -> bool:
             return True
 
     except (subprocess.CalledProcessError, FileNotFoundError) as e:
-        print(f"[notify] desktop 通知失敗: {e}", file=sys.stderr)
+        logger.error(f"desktop 通知失敗: {e}")
     return False
 
 
@@ -153,7 +180,7 @@ def notify_slack(title: str, body: str, webhook: str, channel: str | None) -> bo
         with urllib.request.urlopen(req, timeout=5) as resp:
             return resp.status == 200
     except urllib.error.URLError as e:
-        print(f"[notify] Slack 送信失敗: {e}", file=sys.stderr)
+        logger.error(f"Slack 送信失敗: {e}")
         return False
 
 
@@ -171,7 +198,7 @@ def main():
     config  = load_config()
     title, body = build_message(args.event, args)
 
-    print(f"[notify] {title}: {body[:80]}")
+    logger.info(f"{title}: {body[:80]}")
 
     results = []
 
@@ -189,7 +216,7 @@ def main():
 
     for dest, ok in results:
         status = "✓" if ok else "✗"
-        print(f"  [{status}] {dest}")
+        logger.info(f"  [{status}] {dest}")
 
     # どれか1つでも成功すれば exit 0
     if not results or any(ok for _, ok in results):
@@ -212,7 +239,7 @@ def notify_desktop_wsl_to_windows(title: str, body: str) -> bool:
     ]
     ps_path = next((p for p in ps_candidates if p), None)
     if not ps_path:
-        print("[notify] powershell.exe が見つかりません（WSL2環境ではないかもしれません）", file=sys.stderr)
+        logger.error("powershell.exe が見つかりません（WSL2環境ではないかもしれません）")
         return False
 
     # BalloonTip方式（全Windowsバージョン対応）
@@ -231,5 +258,5 @@ def notify_desktop_wsl_to_windows(title: str, body: str) -> bool:
         )
         return True
     except Exception as e:
-        print(f"[notify] WSL2→Windows通知失敗: {e}", file=sys.stderr)
+        logger.error(f"WSL2→Windows通知失敗: {e}")
         return False
