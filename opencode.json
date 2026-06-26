@@ -1,6 +1,5 @@
 {
   "$schema": "https://opencode.ai/config.json",
-
   "provider": {
     "ollama": {
       "npm": "@ai-sdk/openai-compatible",
@@ -20,10 +19,8 @@
       }
     }
   },
-
   "model": "ollama/qwen2.5-coder:7b-16k",
   "default_agent": "sisyphus",
-
   "agent": {
     "sisyphus": {
       "mode": "primary",
@@ -31,9 +28,15 @@
       "model": "ollama/qwen2.5-coder:7b-16k",
       "temperature": 0.2,
       "tools": {
-        "read": true,  "grep": true, "glob": true, "list": true,
-        "bash": true,  "write": false, "edit": false,
-        "webfetch": false, "websearch": false
+        "read": true,
+        "grep": true,
+        "glob": true,
+        "list": true,
+        "bash": true,
+        "write": false,
+        "edit": false,
+        "webfetch": false,
+        "websearch": false
       }
     },
     "pm": {
@@ -42,9 +45,15 @@
       "model": "ollama/qwen2.5-coder:7b-16k",
       "temperature": 0.5,
       "tools": {
-        "read": true, "grep": true, "glob": true, "list": true,
-        "bash": false, "write": false, "edit": false,
-        "webfetch": false, "websearch": false
+        "read": true,
+        "grep": true,
+        "glob": true,
+        "list": true,
+        "bash": false,
+        "write": false,
+        "edit": false,
+        "webfetch": false,
+        "websearch": false
       }
     },
     "orchestrator": {
@@ -53,9 +62,15 @@
       "model": "ollama/qwen2.5-coder:7b-16k",
       "temperature": 0.2,
       "tools": {
-        "read": true, "grep": true, "glob": true, "list": true,
-        "bash": true,  "write": false, "edit": false,
-        "webfetch": false, "websearch": false
+        "read": true,
+        "grep": true,
+        "glob": true,
+        "list": true,
+        "bash": true,
+        "write": false,
+        "edit": false,
+        "webfetch": false,
+        "websearch": false
       }
     },
     "executor": {
@@ -64,9 +79,15 @@
       "model": "ollama/qwen2.5-coder:7b-16k",
       "temperature": 0.3,
       "tools": {
-        "read": true, "grep": true, "glob": true, "list": true,
-        "bash": true,  "write": true,  "edit": true,
-        "webfetch": false, "websearch": false
+        "read": true,
+        "grep": true,
+        "glob": true,
+        "list": true,
+        "bash": true,
+        "write": true,
+        "edit": true,
+        "webfetch": false,
+        "websearch": false
       }
     },
     "coder": {
@@ -75,28 +96,34 @@
       "model": "ollama/qwen2.5-coder:14b",
       "temperature": 0.4,
       "tools": {
-        "read": true, "grep": true, "glob": true, "list": true,
-        "bash": true,  "write": true,  "edit": true,
-        "webfetch": false, "websearch": false
+        "read": true,
+        "grep": true,
+        "glob": true,
+        "list": true,
+        "bash": true,
+        "write": true,
+        "edit": true,
+        "webfetch": false,
+        "websearch": false
       }
     }
   },
-
   "permission": {
     "edit": "ask",
     "bash": {
-      "*":                               "ask",
-      "python3 tools/score-issues.py*":  "allow",
-      "python3 tools/check-blockers.py*":"allow",
-      "python3 tools/add-task.py*":      "allow",
-      "python3 tools/notify.py*":        "allow",
-      "python3 tools/update-roadmap.py*":"ask",
-      "git commit*":                     "ask",
-      "git push*":                       "ask",
-      "rm -rf *":                        "deny",
-      "rm -f *":                         "ask"
+      "*": "ask",
+      "python3 tools/score-issues.py*": "allow",
+      "python3 tools/check-blockers.py*": "allow",
+      "python3 tools/add-task.py*": "allow",
+      "python3 tools/notify.py*": "allow",
+      "python3 tools/update-roadmap.py*": "ask",
+      "git commit*": "ask",
+      "git push*": "ask",
+      "rm -rf *": "deny",
+      "rm -f *": "ask"
     }
   },
-
-  "instructions": ["AGENTS.md"]
+  "instructions": [
+    "AGENTS.md"
+  ]
 }

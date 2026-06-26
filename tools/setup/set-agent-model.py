@@ -9,6 +9,7 @@ import sys
 import re
 import argparse
 import logging
+import json
 from pathlib import Path
 
 # loggerの設定
@@ -118,6 +119,27 @@ def update_agent_model(path: Path, new_model: str) -> bool:
         return True
     except Exception as e:
         logger.error(f"[ERROR] {path.name} の更新失敗: {e}")
+def update_opencode_json_model(agent_name: str, new_model: str) -> bool:
+    """opencode.json 内の指定エージェントのモデル名、およびデフォルトモデルを必要に応じて更新する"""
+    config_path = Path("opencode.json")
+    if not config_path.exists():
+        return True
+    try:
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+        
+        # 指定エージェントのモデル変更
+        if "agent" in data and agent_name in data["agent"]:
+            data["agent"][agent_name]["model"] = new_model
+            
+        # デフォルトエージェントが変更された場合は、デフォルトモデルも同期
+        if agent_name == data.get("default_agent", "sisyphus"):
+            data["model"] = new_model
+            
+        config_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        logger.info(f"  [SUCCESS] opencode.json の '{agent_name}' モデルを {new_model} に更新しました。")
+        return True
+    except Exception as e:
+        logger.error(f"[ERROR] opencode.json の更新失敗: {e}")
         return False
 
 def list_agents(files: dict[str, Path]):
@@ -211,6 +233,7 @@ def interactive_mode(files: dict[str, Path]):
                     old_model = parse_agent_model(path)
                     logger.info(f"エージェント '{target_agent}' のモデル変更: {old_model} -> {model_to_set}")
                     if update_agent_model(path, model_to_set):
+                        update_opencode_json_model(target_agent, model_to_set)
                         logger.info("[SUCCESS] 変更されました。")
                     input("\nEnterキーを押してメニューに戻ります...")
             else:
@@ -250,6 +273,7 @@ def main():
         old_model = parse_agent_model(path)
         logger.info(f"エージェント '{name}' のモデル変更: {old_model} -> {new_model}")
         if update_agent_model(path, new_model):
+            update_opencode_json_model(name, new_model)
             logger.info("[SUCCESS] 正常に変更されました。")
             sys.exit(0)
         else:
