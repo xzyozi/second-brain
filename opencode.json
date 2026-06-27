@@ -15,6 +15,14 @@
         "qwen2.5-coder:14b": {
           "name": "Qwen2.5 Coder 14B",
           "tools": true
+        },
+        "qwen2.5-coder:14b-instruct": {
+          "name": "Qwen2.5 Coder 14B Instruct",
+          "tools": true
+        },
+        "gemma4-12b-it-Q4_K_M:latest": {
+          "name": "Gemma4 12B IT Q4_K_M",
+          "tools": true
         }
       }
     }
@@ -117,6 +125,11 @@
       "python3 tools/add-task.py*": "allow",
       "python3 tools/notify.py*": "allow",
       "python3 tools/update-roadmap.py*": "ask",
+      "uv run python tools/score-issues.py*": "allow",
+      "uv run python tools/check-blockers.py*": "allow",
+      "uv run python tools/add-task.py*": "allow",
+      "uv run python tools/notify.py*": "allow",
+      "uv run python tools/update-roadmap.py*": "ask",
       "git commit*": "ask",
       "git push*": "ask",
       "rm -rf *": "deny",
