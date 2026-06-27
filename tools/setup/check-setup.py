@@ -98,19 +98,25 @@ def check_ollama() -> tuple[bool, str]:
                 if resp.status == 200:
                     data = json.loads(resp.read().decode("utf-8"))
                     logger.info(f"[OK] 3. Ollama: ホスト {host} にて Ollama 疎通成功 (version: {data.get('version')}).")
+                    if host in ["localhost", "127.0.0.1"] and is_wsl():
+                        logger.info("   -> [INFO] WSL2の mirrored ネットワークモード、または同一ローカル空間での接続が有効です。")
                     return True, host
         except Exception:
             continue
     logger.error("[NG] 3. Ollama: Ollama 疎通失敗。")
+    if is_wsl():
+        logger.error("   -> [HINT] Windows側で Ollama が起動しているか確認してください。")
+        logger.error("   -> [HINT] WSL2の mirrored モードをご使用の場合は、Windows側の .wslconfig に [wsl2] networkingMode=mirrored が設定されていることを確認してください。")
+        logger.error("   -> [HINT] mirrored モードでない場合は、WindowsのホストIP（ip route defaultのIP）が Ollama のホストとして opencode.json の baseURL に設定されている必要があります。")
     return False, ""
 
 def check_model(ollama_host: str) -> bool:
-    """モデル qwen2.5-coder:7b-16k または代替モデルが利用可能かチェック"""
+    """モデル qwen2.5-coder:14b-instruct または gemma4-12b-it-Q4_K_M:latest が利用可能かチェック"""
     if not ollama_host:
         logger.error("[NG] 4. Ollama Model: Ollamaに接続できないため検証をスキップします。")
         return False
     url = f"http://{ollama_host}:11434/api/tags"
-    target_models = ["qwen2.5-coder:7b-16k", "qwen2.5-coder:7b", "qwen2.5-coder:14b"]
+    target_models = ["qwen2.5-coder:14b-instruct", "gemma4-12b-it-Q4_K_M:latest"]
     try:
         req = urllib.request.Request(url)
         with urllib.request.urlopen(req, timeout=3) as resp:
