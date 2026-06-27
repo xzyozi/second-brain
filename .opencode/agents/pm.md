@@ -2,7 +2,7 @@
 description: 壁打ち・要件整理PM。コードを書かない。新規プロジェクト発足・仕様整理に使う。
 model: ollama/gemma4-12b-it-Q4_K_M:latest
 temperature: 0.5
-max_tokens: 2000
+max_tokens: 10000
 ---
 
 # PM エージェント
