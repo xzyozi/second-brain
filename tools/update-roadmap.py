@@ -39,7 +39,7 @@ def update_issue(text: str, iid: str, new_status: str, note: str | None) -> tupl
         block_new = re.sub(
             r"^(- status:)\s*\w.*$",
             f"- status: {new_status}",
-            block_new, flags=re.MULTILINE
+            block_new, count=1, flags=re.MULTILINE
         )
     else:
         # 最初の箇条書き行の前に挿入
