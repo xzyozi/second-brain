@@ -67,16 +67,25 @@ def check_wsl() -> bool:
 
 def check_ollama() -> tuple[bool, str]:
     """Ollamaの動作状態確認"""
-    # WSL2の場合は localhost でアクセスできるはずだが、通らない場合は resolv.conf から IP を取る
     hosts = ["localhost", "127.0.0.1"]
     if is_wsl():
-        # resolv.conf からホストIPを取得して候補に入れる
+        # 【現代WSL2対応】ip routeコマンドから「本物のWindowsホストIP」を確実に取り出す
+        try:
+            res = subprocess.run(["sh", "-c", "ip route show default | awk '{print $3}'"], capture_output=True, text=True)
+            gw = res.stdout.strip()
+            if gw and gw not in hosts:
+                hosts.append(gw)
+        except Exception:
+            pass
+
+        # 旧方式（resolv.conf）もフォールバックとして一応残す
         try:
             with open("/etc/resolv.conf", "r") as f:
                 for line in f:
                     if line.startswith("nameserver"):
                         ip = line.split()[1].strip()
-                        hosts.append(ip)
+                        if ip not in hosts:
+                            hosts.append(ip)
                         break
         except Exception:
             pass
@@ -92,7 +101,7 @@ def check_ollama() -> tuple[bool, str]:
                     return True, host
         except Exception:
             continue
-    logger.error("[NG] 3. Ollama: Ollama 疎通失敗。Windows側で Ollama が起動しているか、またはポート 11434 が解放されているか確認してください。")
+    logger.error("[NG] 3. Ollama: Ollama 疎通失敗。")
     return False, ""
 
 def check_model(ollama_host: str) -> bool:
