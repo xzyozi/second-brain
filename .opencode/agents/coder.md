@@ -1,6 +1,6 @@
 ---
 description: 実装・コードレビュー専門。確定仕様に基づいてコードを生成する。
-model: ollama/qwen2.5-coder:14b
+model: ollama/qwen2.5-coder:14b-instruct
 temperature: 0.4
 max_tokens: 4000
 ---

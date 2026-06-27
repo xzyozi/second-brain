@@ -7,7 +7,7 @@ subtask: false
 Issue #$ARGUMENTS を実行します。
 
 現在のIssue状態:
-!`grep -A 25 "## \[#$ARGUMENTS\]\|## #$ARGUMENTS\b\|## $ARGUMENTS " roadmap.md 2>/dev/null | head -28 || echo "Issue #$ARGUMENTS が見つかりません"`
+!`(grep -A 25 "## \[#$ARGUMENTS\]\|## #$ARGUMENTS\b\|## $ARGUMENTS " roadmap.md 2>/dev/null || grep -C 3 "$ARGUMENTS" projects/*/tasks.md 2>/dev/null) | head -28 || echo "Issue $ARGUMENTS が見つかりません"`
 
 関連README:
 !`find projects/ -name "README.md" | xargs grep -l "#$ARGUMENTS" 2>/dev/null | head -1 | xargs cat 2>/dev/null || echo "（関連READMEなし）"`

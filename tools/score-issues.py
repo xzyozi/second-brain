@@ -12,7 +12,18 @@ import re
 import json
 import argparse
 import datetime
+import sys
 from pathlib import Path
+import os
+import logging
+
+# loggerの設定
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+logger = logging.getLogger("score-issues")
 
 # ── スコア重み ──────────────────────────────────────────────────
 WEIGHTS = {"P": 3.0, "F": 2.0, "E": 1.5, "D": 2.0}
@@ -79,7 +90,7 @@ def parse_issues(text: str) -> list[dict]:
     # ## [#N] または ## #N または ## N のいずれにも対応
     blocks = re.split(r"(?=^## )", text, flags=re.MULTILINE)
     for block in blocks:
-        m = re.match(r"^## \[?#?(\d+)\]?\s+(.+)", block)
+        m = re.match(r"^## \[?#?([A-Z0-9\-]+)\]?\s+(.+)", block)
         if not m:
             continue
         iid, title = m.group(1), m.group(2).strip()
@@ -117,34 +128,157 @@ def parse_issues(text: str) -> list[dict]:
     return issues
 
 
+def parse_tasks_file(text: str, project_key: str, project_name: str) -> list[dict]:
+    """
+    tasks.md のフォーマット想定:
+      - [ ] [EC-001] タイトル  <!-- priority:high estimate:4h added:2026-06-27 -->
+      - [/] タイトル  <!-- priority:medium estimate:2h added:2026-06-26 blockedby:#8 -->
+    """
+    issues = []
+    task_index = 1
+    lines = text.splitlines()
+
+    for line in lines:
+        m_task = re.match(r"^\s*-\s*\[([ x/])\]\s+(.*)", line)
+        if not m_task:
+            continue
+        
+        status_char = m_task.group(1)
+        rest = m_task.group(2).strip()
+
+        # 完了済みはスキップ
+        if status_char == "x":
+            continue
+        
+        status = "in-progress" if status_char == "/" else "open"
+
+        # コメント部分 (<!-- ... -->) の抽出
+        m_comment = re.search(r"<!--\s*(.*?)\s*-->", rest)
+        comment_content = ""
+        if m_comment:
+            comment_content = m_comment.group(1)
+            title_part = rest[:m_comment.start()].strip()
+        else:
+            title_part = rest
+
+        # メタデータのデフォルト値
+        priority = "none"
+        estimate = ""
+        updated = ""
+        extra_lines = []
+
+        if comment_content:
+            m_p = re.search(r"priority:(\w+)", comment_content)
+            if m_p:
+                priority = m_p.group(1)
+            
+            m_e = re.search(r"estimate:([^\s]+)", comment_content)
+            if m_e:
+                estimate = m_e.group(1)
+            
+            m_a = re.search(r"added:([\d\-]+)", comment_content)
+            if m_a:
+                updated = m_a.group(1)
+            
+            m_u = re.search(r"updated:([\d\-]+)", comment_content)
+            if m_u:
+                updated = m_u.group(1)
+            
+            m_b = re.search(r"blockedby:([^\s]+)", comment_content)
+            if m_b:
+                extra_lines.append(f"- blockedby: {m_b.group(1)}")
+
+            # 各種ブロッカーワードの透過的転送
+            for kw in ["仕様未確定", "要確認", "TBD", "spec?", "unclear", "not defined",
+                       "waiting", "review", "external", "vendor", "resource", "予算未確定"]:
+                if kw in comment_content:
+                    extra_lines.append(f"- {kw}: info")
+
+        # タイトルから [KEY-123] 形式のID抽出を試みる
+        m_id = re.match(r"^\[?([A-Z0-9\-]+)\]?\s*(.*)", title_part)
+        if m_id:
+            iid = m_id.group(1)
+            title = m_id.group(2).strip()
+        else:
+            iid = f"{project_key}-{task_index}"
+            title = title_part
+            task_index += 1
+
+        # 既存のパース・評価ロジックを再利用するため、一時的にロードマップ形式のブロックテキストに変換
+        block_text = f"## [{iid}] {title}\n"
+        block_text += f"- status: {status}\n"
+        block_text += f"- priority-{priority}\n"
+        if estimate:
+            block_text += f"- estimate: {estimate}\n"
+        if updated:
+            block_text += f"- updated: {updated}\n"
+        for extra in extra_lines:
+            block_text += f"{extra}\n"
+
+        # 共通の解析ロジックを走らせるため、この1ブロックを parse_issues に渡す
+        parsed_list = parse_issues(block_text)
+        if parsed_list:
+            item = parsed_list[0]
+            item["project"] = project_name
+            issues.append(item)
+
+    return issues
+
+
 def main():
     parser = argparse.ArgumentParser(description="Issue スコアリング（Layer 2 / Step 1）")
     parser.add_argument("--roadmap", default="roadmap.md")
     parser.add_argument("--out",     default="tools/.cache/priority-cache.json")
     args = parser.parse_args()
 
-    roadmap_path = Path(args.roadmap)
-    if not roadmap_path.exists():
-        print(f"[score-issues] ERROR: {roadmap_path} が見つかりません")
-        raise SystemExit(1)
+    all_issues = []
 
-    text   = roadmap_path.read_text(encoding="utf-8")
-    issues = parse_issues(text)
+    # 1. 母艦 roadmap.md のパース
+    roadmap_path = Path(args.roadmap)
+    if roadmap_path.exists():
+        text = roadmap_path.read_text(encoding="utf-8")
+        issues = parse_issues(text)
+        for i in issues:
+            i["project"] = "core"
+        all_issues.extend(issues)
+    else:
+        logger.warning(f"roadmap.md が見つかりません: {roadmap_path}")
+
+    # 2. 衛星プロジェクトのパース
+    projects_dir = Path("projects")
+    if projects_dir.exists():
+        for proj_json_path in sorted(projects_dir.glob("*/project.json")):
+            try:
+                proj_meta = json.loads(proj_json_path.read_text(encoding="utf-8"))
+                proj_key = proj_meta.get("key", "")
+                proj_name = proj_json_path.parent.name
+                
+                tasks_path = proj_json_path.parent / "tasks.md"
+                if tasks_path.exists():
+                    tasks_text = tasks_path.read_text(encoding="utf-8")
+                    proj_issues = parse_tasks_file(tasks_text, proj_key, proj_name)
+                    all_issues.extend(proj_issues)
+            except Exception as e:
+                logger.error(f"プロジェクト {proj_json_path.parent.name} の解析失敗: {e}")
+
+    # 全プロジェクト横断でソート
+    all_issues.sort(key=lambda x: x["score"], reverse=True)
 
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "generated_at": datetime.datetime.now().isoformat(timespec="seconds"),
-        "total":        len(issues),
-        "issues":       issues,
+        "total":        len(all_issues),
+        "issues":       all_issues,
     }
     out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2))
 
-    print(f"[score-issues] {len(issues)} issues scored → {out_path}")
-    for i in issues[:5]:
+    logger.info(f"{len(all_issues)} issues scored → {out_path}")
+    for i in all_issues[:10]:
         axes = i["axes"]
-        print(f"  #{i['id']:>4}  score={i['score']:>5}  "
-              f"P={axes['P']} F={axes['F']} E={axes['E']} D={axes['D']}  {i['title'][:45]}")
+        proj_str = f"[{i['project']}]"
+        logger.info(f"  #{i['id']:<8} {proj_str:<12} score={i['score']:>5}  "
+                    f"P={axes['P']} F={axes['F']} E={axes['E']} D={axes['D']}  {i['title'][:40]}")
 
 
 if __name__ == "__main__":

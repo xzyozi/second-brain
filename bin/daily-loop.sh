@@ -44,7 +44,7 @@ if p.exists():
     issues = d.get("issues", [])
     if issues:
         i = issues[0]
-        print(f"#{i['id']} {i['title'][:28]} (score={i['score']})")
+        print(f"#{i['id']} [{i.get('project', 'core')}] {i['title'][:28]} (score={i['score']})")
         exit()
 print("（Issueなし）")
 PY

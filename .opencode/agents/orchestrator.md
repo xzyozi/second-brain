@@ -1,6 +1,6 @@
 ---
 description: 優先度スコアを読み実行計画を提示する。計画提示専用。コードを書かない。
-model: ollama/qwen2.5-coder:7b-16k
+model: ollama/gemma4-12b-it-Q4_K_M:latest
 temperature: 0.2
 max_tokens: 1000
 ---

@@ -1,6 +1,6 @@
 ---
 description: 承認済みIssueを1件ずつ実行する。変更は提案→承認のフローを守る。
-model: ollama/qwen2.5-coder:7b-16k
+model: ollama/qwen2.5-coder:14b-instruct
 temperature: 0.3
 max_tokens: 3000
 ---

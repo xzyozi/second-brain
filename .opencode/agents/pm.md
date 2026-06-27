@@ -1,6 +1,6 @@
 ---
 description: 壁打ち・要件整理PM。コードを書かない。新規プロジェクト発足・仕様整理に使う。
-model: ollama/qwen2.5-coder:7b-16k
+model: ollama/gemma4-12b-it-Q4_K_M:latest
 temperature: 0.5
 max_tokens: 2000
 ---
