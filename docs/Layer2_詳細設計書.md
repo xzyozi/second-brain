@@ -140,6 +140,6 @@ Layer 2のループはcronから自動起動することで、Layer 3「常時�
 
 ```bash
 # crontab -e
-0 7 * * * cd ~/second-brain && python3 tools/score-issues.py && python3 tools/check-blockers.py && python3 tools/notify.py --event daily_summary
+0 7 * * * cd ~/second-brain && uv run python tools/score-issues.py && uv run python tools/check-blockers.py && uv run python tools/notify.py --event daily_summary
 
 ```
