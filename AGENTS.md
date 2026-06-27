@@ -12,6 +12,7 @@ oh-my-opencode 統合版 / Claude Code の CLAUDE.md と互換。
 3. **tasks.md の更新は必ず `add-task.py` 経由で行うこと。直接編集は禁止。**
 4. **roadmap.md のステータス変更は `update-roadmap.py` 経由で行うこと。**
 5. **複数の役割を同時に担ってはならない。計画中はコードを書かず、実装中は仕様を変えない。**
+6. **Pythonスクリプトおよびテストを実行する際は、生で `python3` や `pytest` を叩いてはならない。必ず `uv run python tools/...` または `uv run pytest` の形式で実行すること。**
 
 ---
 
@@ -56,13 +57,13 @@ Sisyphus はすべての入口。以下のルールで他エージェントへ�
 
 ```bash
 # タスク追加
-python3 tools/add-task.py projects/<name> "タスク内容" --priority high
+uv run python tools/add-task.py projects/<name> "タスク内容" --priority high
 
 # Issue ステータス更新
-python3 tools/update-roadmap.py <issue_id> done
+uv run python tools/update-roadmap.py <issue_id> done
 
 # 通知送信
-python3 tools/notify.py --event task_done --issue <id> --title "<title>"
+uv run python tools/notify.py --event task_done --issue <id> --title "<title>"
 ```
 
 ---

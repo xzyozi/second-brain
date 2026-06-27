@@ -14,5 +14,5 @@ Issue #$ARGUMENTS を実行します。
 
 実装案を提示してください。ファイル変更は提案のみ行い、承認後に実行してください。
 完了後は必ず以下のコマンドを提案してください（直接実行しないこと）：
-  python3 tools/update-roadmap.py $ARGUMENTS done
-  python3 tools/notify.py --event task_done --issue $ARGUMENTS --title "（タイトル）"
+  uv run python tools/update-roadmap.py $ARGUMENTS done
+  uv run python tools/notify.py --event task_done --issue $ARGUMENTS --title "（タイトル）"

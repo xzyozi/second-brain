@@ -24,8 +24,8 @@ alias ocb='cd "$SECOND_BRAIN_DIR" && opencode run --agent coder'         # 実�
 # ── ショートカット ────────────────────────────────────────────────
 alias sb-plan='cd "$SECOND_BRAIN_DIR" && opencode run --agent orchestrator "/orchestrate"'
 alias sb-status='cd "$SECOND_BRAIN_DIR" && opencode run --agent sisyphus "/status"'
-alias sb-score='cd "$SECOND_BRAIN_DIR" && python3 tools/score-issues.py'
-alias sb-check='cd "$SECOND_BRAIN_DIR" && python3 tools/check-blockers.py'
+alias sb-score='cd "$SECOND_BRAIN_DIR" && uv run python tools/score-issues.py'
+alias sb-check='cd "$SECOND_BRAIN_DIR" && uv run python tools/check-blockers.py'
 
 # ── 使い方表示 ────────────────────────────────────────────────────
 alias sb-help='cat << "HELP"

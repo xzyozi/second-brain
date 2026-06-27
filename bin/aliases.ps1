@@ -19,8 +19,8 @@ function ocb   { wsl -e bash -c "cd ~/second-brain && opencode run --agent coder
 # ショートカット
 function sb-plan   { wsl -e bash -c 'cd ~/second-brain && opencode run --agent orchestrator "/orchestrate"' }
 function sb-status { wsl -e bash -c 'cd ~/second-brain && opencode run --agent sisyphus "/status"' }
-function sb-score  { wsl -e bash -c 'cd ~/second-brain && python3 tools/score-issues.py' }
-function sb-check  { wsl -e bash -c 'cd ~/second-brain && python3 tools/check-blockers.py' }
+function sb-score  { wsl -e bash -c 'cd ~/second-brain && uv run python tools/score-issues.py' }
+function sb-check  { wsl -e bash -c 'cd ~/second-brain && uv run python tools/check-blockers.py' }
 
 function sb-help {
     Write-Host @"
