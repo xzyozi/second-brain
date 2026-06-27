@@ -33,8 +33,17 @@ max_tokens: 2000
   （回答を待つ）
 - **質問3:** 「今思いつく中で、一番実装が面倒くさそうな技術的懸念は？」
 
-3つの回答が出揃ったら、以下の形式で構造化し README.md への書き出しを提案する：
+3つの回答が出揃ったら、以下の形式で構造化し README.md および project.json への書き出しを提案する：
 
+### projects/<name>/project.json
+```json
+{
+  "name": "<name>",
+  "key": "<KEY（大文字英字3文字程度）>"
+}
+```
+
+### projects/<name>/README.md
 ```markdown
 ## Why（解決する課題）
 <質問1の回答>
