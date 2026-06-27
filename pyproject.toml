@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "second-brain-os"
+version = "2.0.0"
+description = "Deterministic core utilities for Second Brain OS"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "ruff>=0.4.0",
+]
+
+# --- pytest 設定 ---
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+# ルートを PYTHONPATH に追加し、tools/ 配下モジュールを直接インポート可能にする
+pythonpath = ["."]
+addopts = "-v --tb=short"
+
+# --- Ruff (高速リンター・フォーマッター) 設定 ---
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+# E: 通常エラー, F: 未使用変数/インポート, I: import順序, UP: モダン構文アップグレード
+select = ["E", "F", "I", "UP"]
+# ハイフン付きファイル名をモジュールとして扱う都合上、importlib使用箇所は無視
+ignore = []
