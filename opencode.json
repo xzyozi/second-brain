@@ -20,7 +20,7 @@
     }
   },
   "model": "ollama/gemma4-12b-it-Q4_K_M:latest",
-  "default_agent": "sisyphus",
+  "default_agent": "pm",
   "agent": {
     "sisyphus": {
       "mode": "primary",
