@@ -112,11 +112,6 @@
     "edit": "ask",
     "bash": {
       "*": "ask",
-      "python3 tools/score-issues.py*": "allow",
-      "python3 tools/check-blockers.py*": "allow",
-      "python3 tools/add-task.py*": "allow",
-      "python3 tools/notify.py*": "allow",
-      "python3 tools/update-roadmap.py*": "ask",
       "uv run python tools/score-issues.py*": "allow",
       "uv run python tools/check-blockers.py*": "allow",
       "uv run python tools/add-task.py*": "allow",

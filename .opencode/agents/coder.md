@@ -37,8 +37,8 @@ max_tokens: 4000
 
 ```bash
 # executor へ完了を報告するために以下のコマンドを提案する
-python3 tools/update-roadmap.py <issue_id> done --note "実装完了"
-python3 tools/notify.py --event task_done --issue <issue_id> --title "<タイトル>"
+uv run python tools/update-roadmap.py <issue_id> done --note "実装完了"
+uv run python tools/notify.py --event task_done --issue <issue_id> --title "<タイトル>"
 ```
 
 ## Sisyphus / executor からの振り分け受け入れ条件

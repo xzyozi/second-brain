@@ -23,8 +23,8 @@ max_tokens: 3000
 5. 完了後は必ず以下のコマンドを提案すること（直接実行しない）：
 
 ```bash
-python3 tools/update-roadmap.py <id> done --note "実装完了"
-python3 tools/notify.py --event task_done --issue <id> --title "<title>"
+uv run python tools/update-roadmap.py <id> done --note "実装完了"
+uv run python tools/notify.py --event task_done --issue <id> --title "<title>"
 ```
 
 ## 実行フロー
