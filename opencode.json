@@ -49,7 +49,7 @@
         "grep": true,
         "glob": true,
         "list": true,
-        "bash": false,
+        "bash": true,
         "write": false,
         "edit": false,
         "webfetch": false,
