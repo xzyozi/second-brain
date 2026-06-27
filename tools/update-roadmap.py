@@ -4,9 +4,9 @@ update-roadmap.py  ―  Issue ステータスを安全に更新する
 LLM が直接 roadmap.md を書き換える代わりに、このスクリプトに委譲する。
 
 使い方:
-  python3 tools/update-roadmap.py <issue_id> <status> [--note "コメント"]
-  python3 tools/update-roadmap.py 12 done
-  python3 tools/update-roadmap.py 12 blocked --note "B1: API仕様未確定"
+  uv run python tools/update-roadmap.py <issue_id> <status> [--note "コメント"]
+  uv run python tools/update-roadmap.py 12 done
+  uv run python tools/update-roadmap.py 12 blocked --note "B1: API仕様未確定"
 """
 
 import re

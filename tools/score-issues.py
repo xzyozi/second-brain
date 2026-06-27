@@ -5,7 +5,7 @@ roadmap.md を解析し、4軸スコアを計算して priority-cache.json に�
 LLM を一切使用しない決定的スクリプト。
 
 使い方:
-  python3 tools/score-issues.py [--roadmap roadmap.md] [--out tools/.cache/priority-cache.json]
+  uv run python tools/score-issues.py [--roadmap roadmap.md] [--out tools/.cache/priority-cache.json]
 """
 
 import re

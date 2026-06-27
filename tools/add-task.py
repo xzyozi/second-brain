@@ -4,8 +4,8 @@ add-task.py  ―  tasks.md へタスクを安全に追記する
 LLM が直接 tasks.md を編集する代わりに呼び出す安全装置。
 
 使い方:
-  python3 tools/add-task.py projects/<name> "タスク内容"
-  python3 tools/add-task.py projects/my-app "ユーザー認証APIを実装する" --priority high
+  uv run python tools/add-task.py projects/<name> "タスク内容"
+  uv run python tools/add-task.py projects/my-app "ユーザー認証APIを実装する" --priority high
 """
 
 import re

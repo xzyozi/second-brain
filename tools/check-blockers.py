@@ -5,7 +5,7 @@ roadmap.md を解析し、ブロッカー6分類を正規表現で確定的に�
 LLM を一切使用しない決定的スクリプト。
 
 使い方:
-  python3 tools/check-blockers.py [--roadmap roadmap.md] [--out tools/.cache/blocked.json]
+  uv run python tools/check-blockers.py [--roadmap roadmap.md] [--out tools/.cache/blocked.json]
 """
 
 import re

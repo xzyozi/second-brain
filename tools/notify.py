@@ -12,10 +12,10 @@ notify.py  ―  拡張1: 通知連携プラグイン
   }
 
 使い方:
-  python3 tools/notify.py --event task_done --issue 12 --title "認証API実装"
-  python3 tools/notify.py --event blocker    --issue 15 --detail "B1: 仕様未確定"
-  python3 tools/notify.py --event scored     --top "#5 スコア89.4"
-  python3 tools/notify.py --event daily_summary
+  uv run python tools/notify.py --event task_done --issue 12 --title "認証API実装"
+  uv run python tools/notify.py --event blocker    --issue 15 --detail "B1: 仕様未確定"
+  uv run python tools/notify.py --event scored     --top "#5 スコア89.4"
+  uv run python tools/notify.py --event daily_summary
 """
 
 import json
