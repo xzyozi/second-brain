@@ -8,20 +8,12 @@
         "baseURL": "http://host.docker.internal:11434/v1"
       },
       "models": {
-        "qwen2.5-coder:7b-16k": {
-          "name": "Qwen2.5 Coder 7B (16K ctx)",
-          "tools": true
-        },
-        "qwen2.5-coder:14b": {
-          "name": "Qwen2.5 Coder 14B",
+        "gemma4-12b-it-Q4_K_M:latest": {
+          "name": "Gemma4 12B IT (Q4_K_M)",
           "tools": true
         },
         "qwen2.5-coder:14b-instruct": {
           "name": "Qwen2.5 Coder 14B Instruct",
-          "tools": true
-        },
-        "gemma4-12b-it-Q4_K_M:latest": {
-          "name": "Gemma4 12B IT Q4_K_M",
           "tools": true
         }
       }
