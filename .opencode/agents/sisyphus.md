@@ -1,6 +1,6 @@
 ---
 description: 全体統括オーケストレーター。タスクを分解し適切なエージェントへ振り分ける。
-model: ollama/qwen2.5-coder:7b-16k
+model: ollama/gemma4-12b-it-Q4_K_M:latest
 temperature: 0.2
 max_tokens: 1500
 ---

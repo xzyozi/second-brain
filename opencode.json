@@ -19,13 +19,13 @@
       }
     }
   },
-  "model": "ollama/qwen2.5-coder:7b-16k",
+  "model": "ollama/gemma4-12b-it-Q4_K_M:latest",
   "default_agent": "sisyphus",
   "agent": {
     "sisyphus": {
       "mode": "primary",
       "description": "全体統括オーケストレーター。タスクを分解し適切なエージェントへ振り分ける",
-      "model": "ollama/qwen2.5-coder:7b-16k",
+      "model": "ollama/gemma4-12b-it-Q4_K_M:latest",
       "temperature": 0.2,
       "tools": {
         "read": true,
@@ -42,7 +42,7 @@
     "pm": {
       "mode": "primary",
       "description": "壁打ち・要件整理PM。コードを書かない。新規プロジェクト発足時に使う",
-      "model": "ollama/qwen2.5-coder:7b-16k",
+      "model": "ollama/gemma4-12b-it-Q4_K_M:latest",
       "temperature": 0.5,
       "tools": {
         "read": true,
@@ -59,7 +59,7 @@
     "orchestrator": {
       "mode": "primary",
       "description": "優先度スコアを読み実行計画を提示する。コードを書かない",
-      "model": "ollama/qwen2.5-coder:7b-16k",
+      "model": "ollama/gemma4-12b-it-Q4_K_M:latest",
       "temperature": 0.2,
       "tools": {
         "read": true,
@@ -76,7 +76,7 @@
     "executor": {
       "mode": "primary",
       "description": "承認済みIssueを1件ずつ実行する。変更は提案→承認のフローを守る",
-      "model": "ollama/qwen2.5-coder:7b-16k",
+      "model": "ollama/qwen2.5-coder:14b-instruct",
       "temperature": 0.3,
       "tools": {
         "read": true,
@@ -93,7 +93,7 @@
     "coder": {
       "mode": "primary",
       "description": "実装・コードレビュー専門。確定仕様に基づいてコードを生成する",
-      "model": "ollama/qwen2.5-coder:14b",
+      "model": "ollama/qwen2.5-coder:14b-instruct",
       "temperature": 0.4,
       "tools": {
         "read": true,
