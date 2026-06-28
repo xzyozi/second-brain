@@ -188,6 +188,9 @@ def parse_tasks_file(text: str, project_key: str, project_name: str) -> list[dic
             if m_b:
                 extra_lines.append(f"- blockedby: {m_b.group(1)}")
 
+            # 親タスクID の抽出
+            m_parent = re.search(r"parent:([^\s]+)", comment_content)
+
             # 各種ブロッカーワードの透過的転送
             for kw in ["仕様未確定", "要確認", "TBD", "spec?", "unclear", "not defined",
                        "waiting", "review", "external", "vendor", "resource", "予算未確定"]:
@@ -220,6 +223,9 @@ def parse_tasks_file(text: str, project_key: str, project_name: str) -> list[dic
         if parsed_list:
             item = parsed_list[0]
             item["project"] = project_name
+            # 親タスクIDがあればバインド
+            if m_parent:
+                item["parent"] = m_parent.group(1)
             issues.append(item)
 
     return issues

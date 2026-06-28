@@ -9,10 +9,11 @@ oh-my-opencode 統合版 / Claude Code の CLAUDE.md と互換。
 
 1. **ファイルを直接書き換える前に必ず人間に確認を求めること。**
 2. **git commit は自分で実行せず、常にコマンド提案にとどめること。**
-3. **tasks.md の更新は必ず `add-task.py` 経由で行うこと。直接編集は禁止。**
+3. **tasks.md の更新は必ず `add-task.py` 経由で行うこと。直接編集は禁止。また、新規にタスクを登録する際は、将来的にサブタスクを紐付けられるよう、必ずタスク名冒頭に `[プロジェクトキー-連番]`（例: `[TFG-001]`）などの一意なIDを含めて登録すること。**
 4. **roadmap.md のステータス変更は `update-roadmap.py` 経由で行うこと。**
 5. **複数の役割を同時に担ってはならない。計画中はコードを書かず、実装中は仕様を変えない。**
 6. **Pythonスクリプトおよびテストを実行する際は、生で `python3` や `pytest` を叩いてはならない。必ず `uv run python tools/...` または `uv run pytest` の形式で実行すること。**
+7. **タスクの実行失敗や不足情報の検出時（プロジェクト・Issueの不検出を含む）は、単にエラーを返して終わらせず、必ず `record-failure.py` 経由で「できなかったこと」と「次回への改善策」をナレッジに記録すること。**
 
 ---
 
@@ -61,13 +62,16 @@ Sisyphus はすべての入口。以下のルールで他エージェントへ�
 
 ```bash
 # タスク追加
-uv run python tools/add-task.py projects/<name> "タスク内容" --priority high
+uv run python tools/add-task.py projects/<name> "[PROJ-001] タスク内容" --priority high
 
 # Issue ステータス更新
 uv run python tools/update-roadmap.py <issue_id> done
 
 # 通知送信
 uv run python tools/notify.py --event task_done --issue <id> --title "<title>"
+
+# 失敗・自己学習ログの記録
+uv run python tools/record-failure.py --agent <agent_name> --phase "<phase>" --issue "<problem>" --action "<improvement>"
 ```
 
 ---
