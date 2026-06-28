@@ -7,7 +7,10 @@ subtask: false
 Issue #$ARGUMENTS を実行します。
 
 現在のIssue状態:
-!`(grep -A 25 "## \[#$ARGUMENTS\]\|## #$ARGUMENTS\b\|## $ARGUMENTS " roadmap.md 2>/dev/null || grep -C 3 "$ARGUMENTS" projects/*/tasks.md 2>/dev/null) | head -28 || echo "Issue $ARGUMENTS が見つかりません"`
+!`(grep -A 25 "## \[#$ARGUMENTS\]\|## #$ARGUMENTS\b\|## $ARGUMENTS " roadmap.md 2>/dev/null || grep -C 5 "$ARGUMENTS" projects/*/tasks.md 2>/dev/null) | head -28 || echo "Issue $ARGUMENTS が見つかりません"`
+
+親タスク/関連コンテキスト:
+!`(parent_id=$(grep "$ARGUMENTS" projects/*/tasks.md 2>/dev/null | grep -o "parent:[A-Z0-9\-]*" | cut -d: -f2); if [ -n "$parent_id" ]; then grep -C 3 "$parent_id" projects/*/tasks.md 2>/dev/null || grep -A 10 "$parent_id" roadmap.md 2>/dev/null; else echo "（直接の親タスクなし）"; fi)`
 
 関連README:
 !`find projects/ -name "README.md" | xargs grep -l "#$ARGUMENTS" 2>/dev/null | head -1 | xargs cat 2>/dev/null || echo "（関連READMEなし）"`
