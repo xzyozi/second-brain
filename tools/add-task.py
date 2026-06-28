@@ -73,9 +73,10 @@ def main():
 
     today    = datetime.date.today().isoformat()
     estimate = f" estimate:{args.estimate}" if args.estimate else ""
-    parent_meta = f" parent:{args.parent}" if args.parent else ""
+    parent_id = args.parent.strip("[]") if args.parent else None
+    parent_meta = f" parent:{parent_id}" if parent_id else ""
 
-    if args.parent:
+    if parent_id:
         # ── サブタスク追記モード ──
         indent = "  "
         new_line = (
@@ -84,17 +85,18 @@ def main():
         )
 
         lines = content.splitlines(keepends=True)
-        parent_idx = find_parent_line_index(lines, args.parent)
+        parent_idx = find_parent_line_index(lines, parent_id)
 
         if parent_idx == -1:
-            print(f"[add-task] [ERROR] 親タスク [{args.parent}] が {tasks_path} に見つかりません。", file=sys.stderr)
+            print(f"[add-task] [ERROR] 親タスク [{parent_id}] が {tasks_path} に見つかりません。", file=sys.stderr)
             sys.exit(1)
 
         insert_at = find_insert_position_after_parent(lines, parent_idx)
         lines.insert(insert_at, new_line)
         content = "".join(lines)
         tasks_path.write_text(content, encoding="utf-8")
-        print(f"[add-task] '{args.task}' → {tasks_path}  (priority:{args.priority}, parent:{args.parent})")
+        print(f"[add-task] '{args.task}' → {tasks_path}  (priority:{args.priority}, parent:{parent_id})")
+
 
     else:
         # ── 通常のフラット追記モード（従来動作） ──
