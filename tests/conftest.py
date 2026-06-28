@@ -41,6 +41,17 @@ def update_roadmap_mod():
     return _load("update-roadmap.py")
 
 
+@pytest.fixture(scope="session")
+def add_task_mod():
+    return _load("add-task.py")
+
+
+@pytest.fixture(scope="session")
+def record_failure_mod():
+    return _load("record-failure.py")
+
+
+
 # ── サンプルデータ ──────────────────────────────────────────────────
 
 @pytest.fixture
