@@ -13,6 +13,7 @@ oh-my-opencode 統合版 / Claude Code の CLAUDE.md と互換。
 4. **roadmap.md のステータス変更は `update-roadmap.py` 経由で行うこと。**
 5. **複数の役割を同時に担ってはならない。計画中はコードを書かず、実装中は仕様を変えない。**
 6. **Pythonスクリプトおよびテストを実行する際は、生で `python3` や `pytest` を叩いてはならない。必ず `uv run python tools/...` または `uv run pytest` の形式で実行すること。**
+7. **タスクの実行失敗や不足情報の検出時（プロジェクト・Issueの不検出を含む）は、単にエラーを返して終わらせず、必ず `record-failure.py` 経由で「できなかったこと」と「次回への改善策」をナレッジに記録すること。**
 
 ---
 
@@ -68,6 +69,9 @@ uv run python tools/update-roadmap.py <issue_id> done
 
 # 通知送信
 uv run python tools/notify.py --event task_done --issue <id> --title "<title>"
+
+# 失敗・自己学習ログの記録
+uv run python tools/record-failure.py --agent <agent_name> --phase "<phase>" --issue "<problem>" --action "<improvement>"
 ```
 
 ---
