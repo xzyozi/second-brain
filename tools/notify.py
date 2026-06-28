@@ -225,8 +225,6 @@ def main():
         sys.exit(1)
 
 
-if __name__ == "__main__":
-    main()
 
 
 # ── WSL2 → Windows トースト通知（追記）────────────────────────
@@ -260,3 +258,7 @@ def notify_desktop_wsl_to_windows(title: str, body: str) -> bool:
     except Exception as e:
         logger.error(f"WSL2→Windows通知失敗: {e}")
         return False
+
+
+if __name__ == "__main__":
+    main()
