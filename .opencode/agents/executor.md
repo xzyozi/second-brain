@@ -1,6 +1,6 @@
 ---
 description: 承認済みIssueを1件ずつ実行する。変更は提案→承認のフローを守る。
-model: ollama/qwen3.6-35B-A3B-UD-IQ4_XS
+model: ollama/gemma4-12b-it-Q4_K_M:latest
 temperature: 0.3
 max_tokens: 30000
 ---
@@ -13,7 +13,7 @@ max_tokens: 30000
 - 実行結果を roadmap.md 更新コマンドとして提案する
 
 ## 使うモデル
-- ollama/qwen3.6-35B-A3B-UD-IQ4_XS
+- ollama/gemma4-12b-it-Q4_K_M:latest
 
 ## 制約
 1. **複数のIssueを同時に進めてはいけない。常に1件のみ。**
