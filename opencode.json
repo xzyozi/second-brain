@@ -12,8 +12,8 @@
           "name": "Gemma4 12B IT (Q4_K_M)",
           "tools": true
         },
-        "qwen2.5-coder:14b-instruct": {
-          "name": "Qwen2.5 Coder 14B Instruct",
+        "qwen3.6-35B-A3B-UD-IQ4_XS": {
+          "name": "qwen3.6-35B-A3B-UD-IQ4_XS",
           "tools": true
         }
       }
@@ -76,7 +76,7 @@
     "executor": {
       "mode": "primary",
       "description": "承認済みIssueを1件ずつ実行する。変更は提案→承認のフローを守る",
-      "model": "ollama/qwen2.5-coder:14b-instruct",
+      "model": "ollama/qwen3.6-35B-A3B-UD-IQ4_XS",
       "temperature": 0.3,
       "tools": {
         "read": true,
@@ -93,7 +93,7 @@
     "coder": {
       "mode": "primary",
       "description": "実装・コードレビュー専門。確定仕様に基づいてコードを生成する",
-      "model": "ollama/qwen2.5-coder:14b-instruct",
+      "model": "ollama/qwen3.6-35B-A3B-UD-IQ4_XS",
       "temperature": 0.4,
       "tools": {
         "read": true,
@@ -121,6 +121,16 @@
       "git push*": "ask",
       "rm -rf *": "deny",
       "rm -f *": "ask"
+    }
+  },
+  "mcp": {
+    "ripgrep-mcp-server": {
+      "type": "local",
+      "command": [
+        "python3",
+        "../MCP/run.py",
+        "ripgrep-mcp-server"
+      ]
     }
   },
   "instructions": [
