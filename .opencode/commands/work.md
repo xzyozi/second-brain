@@ -4,16 +4,16 @@ agent: executor
 subtask: false
 ---
 
-Issue #$ARGUMENTS を実行します。
+Issue # $ARGUMENTS を実行します。
 
 現在のIssue状態:
-!`(grep -A 25 "## \[#$ARGUMENTS\]\|## #$ARGUMENTS\b\|## $ARGUMENTS " roadmap.md 2>/dev/null || grep -C 5 "$ARGUMENTS" projects/*/tasks.md 2>/dev/null) | head -28 || echo "Issue $ARGUMENTS が見つかりません"`
+!`for f in projects/*/tasks.md; do grep -C 8 "$ARGUMENTS" "$f" 2>/dev/null && echo "（ソース: $f）"; done | head -40 || echo "（grep失敗 → projects/ 配下の tasks.md を list/read ツールで直接確認してください）"`
 
 親タスク/関連コンテキスト:
-!`(parent_id=$(grep "$ARGUMENTS" projects/*/tasks.md 2>/dev/null | grep -o "parent:[A-Z0-9\-]*" | cut -d: -f2); if [ -n "$parent_id" ]; then grep -C 3 "$parent_id" projects/*/tasks.md 2>/dev/null || grep -A 10 "$parent_id" roadmap.md 2>/dev/null; else echo "（直接の親タスクなし）"; fi)`
+!`parent_id=$(for f in projects/*/tasks.md; do grep "$ARGUMENTS" "$f" 2>/dev/null; done | grep -o 'parent:[A-Z0-9\-]*' | head -1 | cut -d: -f2); if [ -n "$parent_id" ]; then for f in projects/*/tasks.md; do grep -C 3 "$parent_id" "$f" 2>/dev/null; done; else echo "（直接の親タスクなし）"; fi`
 
 関連README:
-!`find projects/ -name "README.md" | xargs grep -l "#$ARGUMENTS" 2>/dev/null | head -1 | xargs cat 2>/dev/null || echo "（関連READMEなし）"`
+!`find projects/ -name "README.md" 2>/dev/null | while read f; do grep -l "$ARGUMENTS" "$f" 2>/dev/null; done | head -1 | xargs cat 2>/dev/null || echo "（関連READMEなし）"`
 
 実装案を提示してください。ファイル変更は提案のみ行い、承認後に実行してください。
 完了後は必ず以下のコマンドを提案してください（直接実行しないこと）：
