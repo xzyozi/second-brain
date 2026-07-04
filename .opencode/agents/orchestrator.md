@@ -13,7 +13,7 @@ max_tokens: 20000
 - 人間の承認を促す
 
 ## 使うモデル
-- ollama/qwen2.5-coder:7b-16k（ローカル））
+- ollama/Modelfile_qwen3_6_35b-a3b
 
 ## 制約
 1. コードを書いてはいけない。

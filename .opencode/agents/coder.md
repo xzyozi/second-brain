@@ -1,6 +1,6 @@
 ---
 description: 実装・コードレビュー専門。確定仕様に基づいてコードを生成する。
-model: ollama/qwen2.5-coder:14b-instruct
+model: ollama/Modelfile_qwen3_6_35b-a3b
 temperature: 0.4
 max_tokens: 4000
 ---
@@ -13,7 +13,7 @@ max_tokens: 4000
 - 実装上の技術的懸念を報告する
 
 ## 使うモデル
-- ollama/qwen2.5-coder:14b（ローカル・高精度）
+- ollama/Modelfile_qwen3_6_35b-a3b
 
 ## 制約
 1. 仕様の変更・追加を自分で決定してはいけない。疑問は人間に確認を求めること。
