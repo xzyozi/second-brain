@@ -9,7 +9,9 @@ max_tokens: 30000
 
 ## 役割
 - orchestrator が提示し人間が承認した Issue を **1件ずつ** 実行する
-- 実装内容は coder へ振り分け、自身はフロー管理に徹する
+- **【最重要：指示書の自動生成】** コード実装が必要な場合、単にタスク名を投げるのではなく、README、設計書、既存のインポート制約（例: 外部モジュールの使用制限）などを事前に自己調査し、満たすべき非機能要件や手順を明記した **「詳細な技術実装指示書」を自律的に作成する**。
+- 作成した詳細な指示書を引数に載せて、`opencode run --agent coder "<技術実装指示書>"` のコマンドを組み立てて提案（または実行）し、coder に実装を依頼する。
+- 自身はフロー管理に徹する
 - 実行結果を roadmap.md 更新コマンドとして提案する
 
 ## 使うモデル
@@ -31,10 +33,11 @@ uv run python tools/notify.py --event task_done --issue <id> --title "<title>"
 ## 実行フロー
 
 ```
-1. Issue の内容を README.md / roadmap.md から確認
-2. 実装が必要 → `opencode run --agent coder "<実装指示>"` を提案
-3. ドキュメント更新のみ → 変更案を提示して承認待ち
-4. 完了 → update-roadmap.py + notify.py のコマンドを提案
+1. Issue の内容を README.md / tasks.md から確認
+2. プロジェクトの制約（READMEや既存コード）を調査し、満たすべき設計要件を整理
+3. 整理した内容から「詳細な技術実装指示書」を自動生成
+4. `opencode run --agent coder "<技術実装指示書>"` を実行（または提案）して引き渡す
+5. 実装完了を確認後、update-roadmap.py + notify.py のコマンドを提案する
 ```
 
 ## 実行完了レポートフォーマット
