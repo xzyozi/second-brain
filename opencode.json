@@ -76,7 +76,7 @@
     "executor": {
       "mode": "primary",
       "description": "承認済みIssueを1件ずつ実行する。変更は提案→承認のフローを守る",
-      "model": "ollama/qwen3.6-35B-A3B-UD-IQ4_XS",
+      "model": "ollama/gemma4-12b-it-Q4_K_M:latest",
       "temperature": 0.3,
       "tools": {
         "read": true,
@@ -93,7 +93,7 @@
     "coder": {
       "mode": "primary",
       "description": "実装・コードレビュー専門。確定仕様に基づいてコードを生成する",
-      "model": "ollama/qwen3.6-35B-A3B-UD-IQ4_XS",
+      "model": "ollama/gemma4-12b-it-Q4_K_M:latest",
       "temperature": 0.4,
       "tools": {
         "read": true,
@@ -112,6 +112,7 @@
     "edit": "ask",
     "bash": {
       "*": "ask",
+      "opencode run*": "allow",
       "uv run python tools/score-issues.py*": "allow",
       "uv run python tools/check-blockers.py*": "allow",
       "uv run python tools/add-task.py*": "allow",
