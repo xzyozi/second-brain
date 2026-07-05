@@ -24,6 +24,9 @@ oh-my-opencode 統合版 / Claude Code の CLAUDE.md と互換。
     - 正規表現による自動検出パターンだけに依存してはならない。
     - **①【計画・要件整理フェーズ】（Sisyphus または PM 開始時）**: READMEや設計書を直接読み解き、外部の依存関係や未確定の前提条件がないか直接判定すること。
     - **②【実装・実行フェーズ】（Executor または Coder 開始時）**: 既存のインポート構造を調査し、暗黙のモジュール制約（外部モジュールの使用制限など）がないかコードから直接検証すること。
+11. **test_file_grep プロジェクトにおけるOfficeファイル生成制約 (CRITICAL)**:
+    - Officeファイル（docx, xlsx, pptx）を生成する際、`python-docx` や `openpyxl` などの**外部モジュールは一切使用してはならない**。
+    - 既存の `tools/create_complex_fixtures.py` 等が外部モジュールを使用していてもそれは過去の仕様違反であり無視し、必ず `zipfile` や `xml.etree` などの **Python 標準ライブラリのみを使用** して XML 構造を直接組み立ててバイナリ生成すること。
 
 ---
 
