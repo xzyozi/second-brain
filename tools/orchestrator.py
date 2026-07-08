@@ -222,11 +222,37 @@ class IssueOrchestrator:
         """Issue関連の要件を収集"""
         logger.info(f"  - tasks.mdからIssue情報を読み込み")
 
-        tasks_md = self.root_dir / "tasks.md"
-        if not tasks_md.exists():
-            raise OrchestratorError(f"tasks.md が見つかりません: {tasks_md}")
+        target_tasks_md = None
+        project_path = self.root_dir
 
-        content = tasks_md.read_text(encoding="utf-8")
+        # 1. projects/*/tasks.md を走査 (憲法ルール7準拠)
+        projects_dir = self.root_dir / "projects"
+        if projects_dir.exists():
+            for p_dir in projects_dir.iterdir():
+                if p_dir.is_dir():
+                    p_tasks = p_dir / "tasks.md"
+                    if p_tasks.exists():
+                        content = p_tasks.read_text(encoding="utf-8")
+                        if f"[{issue_id}]" in content:
+                            target_tasks_md = p_tasks
+                            project_path = p_dir
+                            break
+
+        # 2. 見つからない場合はルート直下の tasks.md をフォールバック
+        root_tasks = self.root_dir / "tasks.md"
+        if not target_tasks_md:
+            if root_tasks.exists():
+                content = root_tasks.read_text(encoding="utf-8")
+                if f"[{issue_id}]" in content:
+                    target_tasks_md = root_tasks
+                    project_path = self.root_dir
+
+        if not target_tasks_md:
+            if not root_tasks.exists():
+                raise OrchestratorError(f"tasks.md が見つかりません: {root_tasks}")
+            raise OrchestratorError(f"Issue {issue_id} が tasks.md に見つかりません")
+
+        content = target_tasks_md.read_text(encoding="utf-8")
 
         # 簡易パース（実際にはもっと堅牢にする）
         # 例: - [ ] [ARCH-001] タイトル  <!-- priority:high -->
@@ -238,7 +264,7 @@ class IssueOrchestrator:
             raise OrchestratorError(f"Issue {issue_id} が tasks.md に見つかりません")
 
         title = match.group(1).strip()
-        logger.info(f"  - Issue発見: {title}")
+        logger.info(f"  - Issue発見: {title} (in {target_tasks_md.relative_to(self.root_dir)})")
 
         # 優先度抽出
         priority_match = re.search(rf"{re.escape(issue_id)}.*?priority:(\w+)", content)
@@ -248,7 +274,7 @@ class IssueOrchestrator:
             issue_id=issue_id,
             title=title,
             description=title,  # 簡易版
-            project_path=self.root_dir,
+            project_path=project_path,
             related_files=[],
             priority=priority,
             parent_id=None
