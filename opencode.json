@@ -36,7 +36,8 @@
         "write": false,
         "edit": false,
         "webfetch": false,
-        "websearch": false
+        "websearch": false,
+        "skill": true
       }
     },
     "pm": {
@@ -49,11 +50,12 @@
         "grep": true,
         "glob": true,
         "list": true,
-        "bash": true,
+        "bash": false,
         "write": false,
         "edit": false,
         "webfetch": false,
-        "websearch": false
+        "websearch": false,
+        "skill": true
       }
     },
     "orchestrator": {
@@ -70,7 +72,8 @@
         "write": false,
         "edit": false,
         "webfetch": false,
-        "websearch": false
+        "websearch": false,
+        "skill": true
       }
     },
     "executor": {
@@ -87,7 +90,8 @@
         "write": true,
         "edit": true,
         "webfetch": false,
-        "websearch": false
+        "websearch": false,
+        "skill": true
       }
     },
     "coder": {
@@ -104,7 +108,8 @@
         "write": true,
         "edit": true,
         "webfetch": false,
-        "websearch": false
+        "websearch": false,
+        "skill": true
       }
     }
   },
@@ -112,7 +117,6 @@
     "edit": "ask",
     "bash": {
       "*": "ask",
-      "opencode run*": "allow",
       "uv run python tools/score-issues.py*": "allow",
       "uv run python tools/check-blockers.py*": "allow",
       "uv run python tools/add-task.py*": "allow",
