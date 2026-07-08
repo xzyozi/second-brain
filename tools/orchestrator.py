@@ -20,6 +20,9 @@ from dataclasses import dataclass, asdict
 from datetime import datetime
 import argparse
 
+# プロジェクトのルートディレクトリをインポートパスに追加
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from tools.agent_client import AgentClient
 from tools.prompt_builder import PromptBuilder
 
