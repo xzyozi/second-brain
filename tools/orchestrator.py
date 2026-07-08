@@ -73,6 +73,7 @@ class GeneratedCode:
 @dataclass
 class TestResult:
     """テスト実行結果"""
+    __test__ = False
     passed: bool
     total_tests: int
     failed_tests: int
@@ -112,6 +113,7 @@ class ConstraintViolationError(OrchestratorError):
 
 class TestFailureError(OrchestratorError):
     """テスト失敗エラー"""
+    __test__ = False
     def __init__(self, test_result: TestResult):
         self.test_result = test_result
         super().__init__(f"Tests failed: {test_result.error_log[:200]}")
