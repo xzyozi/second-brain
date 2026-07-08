@@ -139,8 +139,18 @@ class TestIssueOrchestrator:
         assert constraints.line_ending == "LF"
         assert isinstance(constraints.allowed_imports, list)
 
-    def test_generate_implementation_plan_stub(self, tmp_path):
-        """実装指示書生成（スタブ）テスト"""
+    @patch('tools.agent_client.AgentClient.call_agent')
+    def test_generate_implementation_plan(self, mock_call_agent, tmp_path):
+        """実装指示書生成テスト"""
+        # モックの設定
+        mock_response = MagicMock()
+        mock_response.success = True
+        mock_response.parsed_data = {
+            "implementation_plan": "テスト実装指示書内容",
+            "files_mentioned": ["tools/example.py"]
+        }
+        mock_call_agent.return_value = mock_response
+
         orchestrator = IssueOrchestrator(root_dir=tmp_path)
         requirements = Requirements(
             issue_id="ARCH-001",
@@ -158,11 +168,23 @@ class TestIssueOrchestrator:
         impl_plan = orchestrator._generate_implementation_plan(requirements, constraints)
 
         assert isinstance(impl_plan, ImplementationPlan)
-        assert impl_plan.content == "実装指示書（スタブ）"
-        assert len(impl_plan.files_to_create) > 0
+        assert impl_plan.content == "テスト実装指示書内容"
+        assert len(impl_plan.files_to_create) == 1
+        assert impl_plan.files_to_create[0] == Path("tools/example.py")
 
-    def test_generate_code_stub(self, tmp_path):
-        """コード生成（スタブ）テスト"""
+    @patch('tools.agent_client.AgentClient.call_agent')
+    def test_generate_code(self, mock_call_agent, tmp_path):
+        """コード生成テスト"""
+        # モックの設定
+        mock_response = MagicMock()
+        mock_response.success = True
+        mock_response.parsed_data = {
+            "generated_files": {
+                "tools/example.py": "# Code content"
+            }
+        }
+        mock_call_agent.return_value = mock_response
+
         orchestrator = IssueOrchestrator(root_dir=tmp_path)
         impl_plan = ImplementationPlan(
             content="テスト指示書",
@@ -179,7 +201,7 @@ class TestIssueOrchestrator:
 
         assert isinstance(generated_code, GeneratedCode)
         assert isinstance(generated_code.files, dict)
-        assert generated_code.metadata.get("stub") is True
+        assert "tools/example.py" in generated_code.files
 
     def test_write_files(self, tmp_path):
         """ファイル書き込みテスト"""
@@ -252,13 +274,32 @@ class TestIssueOrchestrator:
             assert test_result.passed is False
             assert "timeout" in test_result.error_log.lower()
 
-    def test_execute_issue_dry_run(self, tmp_path):
+    @patch('tools.agent_client.AgentClient.call_agent')
+    def test_execute_issue_dry_run(self, mock_call_agent, tmp_path):
         """Issue実行（ドライラン）テスト"""
         # tasks.md を準備
         tasks_md = tmp_path / "tasks.md"
         tasks_md.write_text("""
 - [ ] [TEST-001] テストIssue  <!-- priority:high -->
 """, encoding="utf-8")
+
+        # モックの設定
+        mock_response_executor = MagicMock()
+        mock_response_executor.success = True
+        mock_response_executor.parsed_data = {
+            "implementation_plan": "テスト実装指示書内容",
+            "files_mentioned": ["tools/example.py"]
+        }
+        
+        mock_response_coder = MagicMock()
+        mock_response_coder.success = True
+        mock_response_coder.parsed_data = {
+            "generated_files": {
+                "tools/example.py": "# Code content"
+            }
+        }
+        
+        mock_call_agent.side_effect = [mock_response_executor, mock_response_coder]
 
         orchestrator = IssueOrchestrator(root_dir=tmp_path)
         result = orchestrator.execute_issue("TEST-001", dry_run=True)
@@ -269,12 +310,31 @@ class TestIssueOrchestrator:
         assert result.context_data["mode"] == "dry_run"
         assert result.test_result is None
 
-    def test_execute_issue_with_test_failure(self, tmp_path):
+    @patch('tools.agent_client.AgentClient.call_agent')
+    def test_execute_issue_with_test_failure(self, mock_call_agent, tmp_path):
         """テスト失敗時のIssue実行テスト"""
         tasks_md = tmp_path / "tasks.md"
         tasks_md.write_text("""
 - [ ] [TEST-002] テストIssue  <!-- priority:high -->
 """, encoding="utf-8")
+
+        # モックの設定
+        mock_response_executor = MagicMock()
+        mock_response_executor.success = True
+        mock_response_executor.parsed_data = {
+            "implementation_plan": "テスト実装指示書内容",
+            "files_mentioned": ["tools/example.py"]
+        }
+        
+        mock_response_coder = MagicMock()
+        mock_response_coder.success = True
+        mock_response_coder.parsed_data = {
+            "generated_files": {
+                "tools/example.py": "# Code content"
+            }
+        }
+        
+        mock_call_agent.side_effect = [mock_response_executor, mock_response_coder]
 
         orchestrator = IssueOrchestrator(root_dir=tmp_path)
 

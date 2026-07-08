@@ -20,6 +20,9 @@ from dataclasses import dataclass, asdict
 from datetime import datetime
 import argparse
 
+from tools.agent_client import AgentClient
+from tools.prompt_builder import PromptBuilder
+
 # ログ設定
 logging.basicConfig(
     level=logging.INFO,
@@ -128,10 +131,8 @@ class IssueOrchestrator:
 
     def __init__(self, root_dir: Path = Path(".")):
         self.root_dir = root_dir
-        # 他のモジュールは後続タスクで実装予定
-        # self.agent_client = AgentClient()
-        # self.context_mgr = ContextManager()
-        # self.prompt_builder = PromptBuilder()
+        self.agent_client = AgentClient()
+        self.prompt_builder = PromptBuilder()
 
     def execute_issue(self, issue_id: str, max_retries: int = 2, dry_run: bool = False) -> ExecutionResult:
         """
@@ -300,16 +301,36 @@ class IssueOrchestrator:
         constraints: Constraints
     ) -> ImplementationPlan:
         """ExecutorエージェントLLMを呼び出して実装指示書を生成"""
-        logger.info(f"  - Executorエージェント呼び出し（未実装のためスタブ）")
+        logger.info(f"  - Executorエージェント呼び出し")
 
-        # TODO: agent_client.call_agent("executor", prompt) を呼ぶ
-        # 現時点ではスタブとして固定値を返す
+        prompt = self.prompt_builder.build_implementation_prompt(
+            requirements, constraints
+        )
+
+        response = self.agent_client.call_agent("executor", prompt)
+
+        if not response.success:
+            raise AgentCallError(f"Executor呼び出し失敗: {response.error_message}")
+
+        data = response.parsed_data
+        implementation_plan_content = data.get("implementation_plan", "")
+        
+        files_mentioned = [Path(f) for f in data.get("files_mentioned", [])]
+        
+        files_to_create = []
+        files_to_edit = []
+        for file in files_mentioned:
+            full_path = requirements.project_path / file
+            if full_path.exists():
+                files_to_edit.append(file)
+            else:
+                files_to_create.append(file)
 
         return ImplementationPlan(
-            content="実装指示書（スタブ）",
-            files_to_create=[Path("tools/example.py")],
-            files_to_edit=[],
-            test_strategy="pytest でテスト"
+            content=implementation_plan_content,
+            files_to_create=files_to_create,
+            files_to_edit=files_to_edit,
+            test_strategy="pytestで検証"
         )
 
     def _generate_code(
@@ -318,14 +339,22 @@ class IssueOrchestrator:
         constraints: Constraints
     ) -> GeneratedCode:
         """CoderエージェントLLMを呼び出してコード生成"""
-        logger.info(f"  - Coderエージェント呼び出し（未実装のためスタブ）")
+        logger.info(f"  - Coderエージェント呼び出し")
 
-        # TODO: agent_client.call_agent("coder", prompt) を呼ぶ
-        # 現時点ではスタブとして空のコードを返す
+        prompt = self.prompt_builder.build_coding_prompt(
+            impl_plan, constraints
+        )
 
+        response = self.agent_client.call_agent("coder", prompt)
+
+        if not response.success:
+            raise AgentCallError(f"Coder呼び出し失敗: {response.error_message}")
+
+        generated_files = response.parsed_data.get("generated_files", {})
+        
         return GeneratedCode(
-            files={},
-            metadata={"stub": True}
+            files=generated_files,
+            metadata={"stub": False}
         )
 
     def _write_files(self, generated_code: GeneratedCode) -> List[str]:
