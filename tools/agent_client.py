@@ -237,7 +237,7 @@ class AgentClient:
         """Executor応答から実装指示書を抽出"""
         # 「## 実装指示書」セクションを探す
         match = re.search(
-            r'## 実装指示書\s*\n(.*?)(?=\n##|\Z)',
+            r'## 実装指示書\s*\n(.*?)(?=\n##\s|\Z)',
             raw_output,
             re.DOTALL | re.IGNORECASE
         )

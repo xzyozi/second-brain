@@ -129,7 +129,7 @@ class PromptBuilder:
 - **タイトル**: {requirements.title}
 - **説明**: {requirements.description}
 - **優先度**: {requirements.priority}
-- **プロジェクトパス**: {requirements.project_path}
+- **プロジェクトパス**: {requirements.project_path.as_posix()}
 
 ## 関連ファイル
 {self._format_file_list(requirements.related_files)}
@@ -248,7 +248,7 @@ def example_function():
 1. **各コードブロックの先頭行に必ず `# filepath: <ファイルパス>` を記述**すること
 2. **ファイルエンコーディング**: {constraints.file_encoding}
 3. **改行コード**: {constraints.line_ending}
-4. **外部モジュール**: {" 使用禁止" if constraints.external_modules_forbidden else "使用可能"}
+4. 外部モジュール: {"使用禁止" if constraints.external_modules_forbidden else "使用可能"}
 5. **許可されたインポート**: {", ".join(constraints.allowed_imports)}
 
 ### コーディング規約:
@@ -314,17 +314,17 @@ def example_function():
         if not files:
             return "（ファイル指定なし）"
 
-        lines = [f"- `{file}`" for file in files]
+        lines = [f"- `{file.as_posix()}`" for file in files]
         return "\n".join(lines)
 
     def _format_constraints(self, constraints: Constraints) -> str:
         """制約条件をMarkdown形式に整形"""
         lines = [
-            f"- **外部モジュール使用**: {' 禁止' if constraints.external_modules_forbidden else '許可'}",
-            f"- **許可されたインポート**: {', '.join(constraints.allowed_imports)}",
-            f"- **ファイルエンコーディング**: {constraints.file_encoding}",
-            f"- **改行コード**: {constraints.line_ending}",
-            f"- **cooldown期間**: {constraints.cooldown_days}日"
+            f"- 外部モジュール使用: {'禁止' if constraints.external_modules_forbidden else '許可'}",
+            f"- 許可されたインポート: {', '.join(constraints.allowed_imports)}",
+            f"- ファイルエンコーディング: {constraints.file_encoding}",
+            f"- 改行コード: {constraints.line_ending}",
+            f"- cooldown期間: {constraints.cooldown_days}日"
         ]
         return "\n".join(lines)
 
