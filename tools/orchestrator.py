@@ -274,12 +274,42 @@ class IssueOrchestrator:
         priority_match = re.search(rf"{re.escape(issue_id)}.*?priority:(\w+)", content)
         priority = priority_match.group(1) if priority_match else "medium"
 
+        # 3. 既存のテストファイルを走査し、期待されるファイルパスを抽出 (対策B)
+        related_files = []
+        tests_dir = project_path / "tests"
+        if tests_dir.exists():
+            import re
+            # クォーテーションで囲まれた .py ファイルのパスを抽出
+            path_pattern = re.compile(r"['\"]([^'\"\s(]*?\.py)['\"]")
+            for test_file in tests_dir.glob("test_*.py"):
+                try:
+                    test_content = test_file.read_text(encoding="utf-8")
+                    for match_path in path_pattern.findall(test_content):
+                        # プロジェクト名を含むフルパスをプロジェクト相対パスに正規化
+                        # 例: projects/test_file_grep/sample/dummy_script.py -> sample/dummy_script.py
+                        normalized_path = match_path
+                        proj_prefix = f"projects/{project_path.name}/"
+                        if normalized_path.startswith(proj_prefix):
+                            normalized_path = normalized_path[len(proj_prefix):]
+                        elif normalized_path.startswith(f"{project_path.name}/"):
+                            normalized_path = normalized_path[len(project_path.name)+1:]
+                        
+                        p = Path(normalized_path)
+                        # 重複を防ぎ、テスト自体は除外する
+                        if p not in related_files and not p.is_absolute() and "test_" not in p.name:
+                            related_files.append(p)
+                except Exception as e:
+                    logger.warning(f"  - テストファイル {test_file.name} のスキャン中にエラー: {e}")
+
+        if related_files:
+            logger.info(f"  - テストスキャンにより {len(related_files)} 個の関連ファイルを検出: {related_files}")
+
         return Requirements(
             issue_id=issue_id,
             title=title,
             description=title,  # 簡易版
             project_path=project_path,
-            related_files=[],
+            related_files=related_files,
             priority=priority,
             parent_id=None
         )
