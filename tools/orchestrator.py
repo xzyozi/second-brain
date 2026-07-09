@@ -122,7 +122,7 @@ class TestFailureError(OrchestratorError):
     __test__ = False
     def __init__(self, test_result: TestResult):
         self.test_result = test_result
-        super().__init__(f"Tests failed: {test_result.error_log[:200]}")
+        super().__init__(f"Tests failed:\n{test_result.error_log}")
 
 
 # ===========================
@@ -401,7 +401,7 @@ class IssueOrchestrator:
                 passed=passed,
                 total_tests=0,  # 簡易版
                 failed_tests=0 if passed else 1,
-                error_log=result.stderr if not passed else "",
+                error_log=f"stdout:\n{result.stdout}\n\nstderr:\n{result.stderr}" if not passed else "",
                 duration=0.0
             )
 
