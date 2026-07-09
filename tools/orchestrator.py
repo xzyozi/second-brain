@@ -21,7 +21,7 @@ from datetime import datetime
 import argparse
 
 # プロジェクトのルートディレクトリをインポートパスに追加
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from tools.agent_client import AgentClient
 from tools.prompt_builder import PromptBuilder
@@ -409,9 +409,14 @@ class IssueOrchestrator:
         logger.info(f"  - pytest 実行")
 
         try:
+            # テストターゲットパスをプロジェクト相対にする
+            # 例: uv run pytest projects/test_file_grep/tests/ -v
+            # これにより、テスト内の相対パス（projects/test_file_grep/...）と作業ディレクトリ（CWD）が一致します
+            test_target = f"projects/{project_path.name}/tests/" if project_path != self.root_dir else "tests/"
+            
             result = subprocess.run(
-                ["uv", "run", "pytest", "tests/", "-v"],
-                cwd=project_path,
+                ["uv", "run", "pytest", test_target, "-v"],
+                cwd=self.root_dir,
                 capture_output=True,
                 text=True,
                 timeout=120
