@@ -215,7 +215,7 @@ class TestIssueOrchestrator:
             metadata={}
         )
 
-        written_files = orchestrator._write_files(generated_code)
+        written_files = orchestrator._write_files(tmp_path, generated_code)
 
         assert len(written_files) == 2
         assert (tmp_path / "test1.py").exists()

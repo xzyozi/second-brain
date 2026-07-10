@@ -191,7 +191,7 @@ class IssueOrchestrator:
 
             # Phase 5: ファイル書き込み
             logger.info(f"[Phase 5] ファイル書き込み")
-            write_result = self._write_files(generated_code)
+            write_result = self._write_files(requirements.project_path, generated_code)
 
             # Phase 6: テスト実行
             logger.info(f"[Phase 6] テスト実行")
@@ -274,19 +274,24 @@ class IssueOrchestrator:
         priority_match = re.search(rf"{re.escape(issue_id)}.*?priority:(\w+)", content)
         priority = priority_match.group(1) if priority_match else "medium"
 
-        # 3. 既存のテストファイルを走査し、期待されるファイルパスを抽出 (対策B)
+        # 3. 既存のテストファイルを走査し、期待されるファイルパスとキーワードを抽出 (対策B)
         related_files = []
+        test_context_hints = []
         tests_dir = project_path / "tests"
+        
+        # 存在しないことをテストするための除外キーワード
+        exclude_keywords = ["non_existent", "missing", "not_found", "nonexistent", "temp"]
+
         if tests_dir.exists():
             import re
-            # クォーテーションで囲まれた .py ファイルのパスを抽出
             path_pattern = re.compile(r"['\"]([^'\"\s(]*?\.py)['\"]")
+            # assert "keyword" in ... 形式の必須キーワードを抽出
+            keyword_pattern = re.compile(r"assert\s+['\"]([^'\"\s]+?)['\"]\s+in\s+")
+
             for test_file in tests_dir.glob("test_*.py"):
                 try:
                     test_content = test_file.read_text(encoding="utf-8")
                     for match_path in path_pattern.findall(test_content):
-                        # プロジェクト名を含むフルパスをプロジェクト相対パスに正規化
-                        # 例: projects/test_file_grep/sample/dummy_script.py -> sample/dummy_script.py
                         normalized_path = match_path
                         proj_prefix = f"projects/{project_path.name}/"
                         if normalized_path.startswith(proj_prefix):
@@ -295,19 +300,42 @@ class IssueOrchestrator:
                             normalized_path = normalized_path[len(project_path.name)+1:]
                         
                         p = Path(normalized_path)
-                        # 重複を防ぎ、テスト自体は除外する
+                        # 重複を防ぎ、テスト自体は除外する。また、non_existent等のダミーファイルも除外
                         if p not in related_files and not p.is_absolute() and "test_" not in p.name:
-                            related_files.append(p)
+                            if not any(kw in p.name.lower() for kw in exclude_keywords):
+                                related_files.append(p)
+
+                    # テスト内でアサーションされている必須キーワードを自動抽出してヒントにする
+                    for kw in keyword_pattern.findall(test_content):
+                        if len(kw) > 2:  # 極端に短い文字列は除外
+                            test_context_hints.append(f"- 生成コード内に必ず含めるべき必須キーワード: `{kw}`")
+
+                    # 関連ファイルがインポートされている行を抽出
+                    for line in test_content.split("\n"):
+                        if "import" in line and any(f.stem in line for f in related_files):
+                            clean_line = line.strip()
+                            test_context_hints.append(f"- 期待されるインポート形式: `{clean_line}`")
+
                 except Exception as e:
                     logger.warning(f"  - テストファイル {test_file.name} のスキャン中にエラー: {e}")
+
+        # 重複を排除
+        test_context_hints = list(set(test_context_hints))
 
         if related_files:
             logger.info(f"  - テストスキャンにより {len(related_files)} 個の関連ファイルを検出: {related_files}")
 
+        # 説明にテストのインポート要件と必須キーワードをスマートに合成
+        extended_description = title
+        if test_context_hints:
+            extended_description += "\n\n【必須要件: テストを通過させるため、以下のコード・キーワードを必ず含めて実装してください】\n"
+            for hint in test_context_hints:
+                extended_description += f"{hint}\n"
+
         return Requirements(
             issue_id=issue_id,
             title=title,
-            description=title,  # 簡易版
+            description=extended_description,
             project_path=project_path,
             related_files=related_files,
             priority=priority,
@@ -390,13 +418,19 @@ class IssueOrchestrator:
             metadata={"stub": False}
         )
 
-    def _write_files(self, generated_code: GeneratedCode) -> List[str]:
+    def _write_files(self, project_path: Path, generated_code: GeneratedCode) -> List[str]:
         """生成されたコードをファイルに書き込む"""
         logger.info(f"  - {len(generated_code.files)}個のファイルを書き込み")
 
         written_files = []
         for filepath_str, content in generated_code.files.items():
             filepath = Path(filepath_str)
+            # パスが絶対パスでなく、かつ projects/プロジェクト名/ で始まっていない場合は project_path を結合する
+            if not filepath.is_absolute():
+                proj_prefix = f"projects/{project_path.name}"
+                if not filepath.as_posix().startswith(proj_prefix):
+                    filepath = project_path / filepath
+
             filepath.parent.mkdir(parents=True, exist_ok=True)
             filepath.write_text(content, encoding="utf-8", newline="\n")
             written_files.append(str(filepath))
