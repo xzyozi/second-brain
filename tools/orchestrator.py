@@ -529,6 +529,9 @@ def main():
     args = parser.parse_args()
 
     if getattr(args, "debug", False):
+        # ルートハンドラ全体のログレベルを強制的にDEBUGに変更する
+        for handler in logging.root.handlers:
+            handler.setLevel(logging.DEBUG)
         logging.getLogger().setLevel(logging.DEBUG)
         logging.getLogger("orchestrator").setLevel(logging.DEBUG)
         logging.getLogger("prompt_builder").setLevel(logging.DEBUG)
