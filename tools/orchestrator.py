@@ -367,11 +367,15 @@ class IssueOrchestrator:
         prompt = self.prompt_builder.build_implementation_prompt(
             requirements, constraints
         )
+        logger.debug(f"==================== [DEBUG] Executor 送信プロンプト ====================\n{prompt}\n======================================================================")
 
         response = self.agent_client.call_agent("executor", prompt)
 
         if not response.success:
+            logger.debug(f"[DEBUG] Executor 失敗時の生応答: \n{response.raw_output}")
             raise AgentCallError(f"Executor呼び出し失敗: {response.error_message}")
+
+        logger.debug(f"==================== [DEBUG] Executor 受信生データ ====================\n{response.raw_output}\n======================================================================")
 
         data = response.parsed_data
         implementation_plan_content = data.get("implementation_plan", "")
@@ -405,11 +409,15 @@ class IssueOrchestrator:
         prompt = self.prompt_builder.build_coding_prompt(
             impl_plan, constraints
         )
+        logger.debug(f"==================== [DEBUG] Coder 送信プロンプト ====================\n{prompt}\n======================================================================")
 
         response = self.agent_client.call_agent("coder", prompt)
 
         if not response.success:
+            logger.debug(f"[DEBUG] Coder 失敗時の生応答: \n{response.raw_output}")
             raise AgentCallError(f"Coder呼び出し失敗: {response.error_message}")
+
+        logger.debug(f"==================== [DEBUG] Coder 受信生データ ====================\n{response.raw_output}\n======================================================================")
 
         generated_files = response.parsed_data.get("generated_files", {})
         
@@ -516,8 +524,16 @@ def main():
     execute_parser.add_argument("--issue-id", required=True, help="実行するIssue ID")
     execute_parser.add_argument("--dry-run", action="store_true", help="実際の書き込みを行わない")
     execute_parser.add_argument("--max-retries", type=int, default=2, help="最大リトライ回数")
+    execute_parser.add_argument("--debug", action="store_true", help="デバッグログを有効にする")
 
     args = parser.parse_args()
+
+    if getattr(args, "debug", False):
+        logging.getLogger().setLevel(logging.DEBUG)
+        logging.getLogger("orchestrator").setLevel(logging.DEBUG)
+        logging.getLogger("prompt_builder").setLevel(logging.DEBUG)
+        logging.getLogger("agent_client").setLevel(logging.DEBUG)
+        logger.debug("デバッグログが有効化されました。")
 
     if args.command == "execute":
         orchestrator = IssueOrchestrator()
