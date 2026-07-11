@@ -237,7 +237,7 @@ class TestIssueOrchestrator:
                 stderr=""
             )
 
-            test_result = orchestrator._run_tests(tmp_path)
+            test_result = orchestrator._run_tests(tmp_path, [])
 
             assert test_result.passed is True
             assert test_result.failed_tests == 0
@@ -255,7 +255,7 @@ class TestIssueOrchestrator:
                 stderr="AssertionError: test failed\n"
             )
 
-            test_result = orchestrator._run_tests(tmp_path)
+            test_result = orchestrator._run_tests(tmp_path, [])
 
             assert test_result.passed is False
             assert test_result.failed_tests == 1
@@ -269,7 +269,7 @@ class TestIssueOrchestrator:
             import subprocess
             mock_run.side_effect = subprocess.TimeoutExpired("pytest", 120)
 
-            test_result = orchestrator._run_tests(tmp_path)
+            test_result = orchestrator._run_tests(tmp_path, [])
 
             assert test_result.passed is False
             assert "timeout" in test_result.error_log.lower()

@@ -195,7 +195,7 @@ class IssueOrchestrator:
 
             # Phase 6: テスト実行
             logger.info(f"[Phase 6] テスト実行")
-            test_result = self._run_tests(requirements.project_path)
+            test_result = self._run_tests(requirements.project_path, write_result)
 
             # Phase 7: 成功判定
             if not test_result.passed:
@@ -438,18 +438,27 @@ class IssueOrchestrator:
 
         return written_files
 
-    def _run_tests(self, project_path: Path) -> TestResult:
+    def _run_tests(self, project_path: Path, written_files: List[str]) -> TestResult:
         """pytestを実行してテスト結果を取得"""
         logger.info(f"  - pytest 実行")
 
         try:
-            # テストターゲットパスをプロジェクト相対にする
-            # 例: uv run pytest projects/test_file_grep/tests/ -v
-            # これにより、テスト内の相対パス（projects/test_file_grep/...）と作業ディレクトリ（CWD）が一致します
-            test_target = f"projects/{project_path.name}/tests/" if project_path != self.root_dir else "tests/"
+            # 変更/新規作成されたテストファイルのみをターゲットにする
+            modified_tests = []
+            for f in written_files:
+                f_path = Path(f)
+                if "test_" in f_path.name and f_path.suffix == ".py":
+                    modified_tests.append(f)
+
+            if modified_tests:
+                logger.info(f"    - 変更されたテストのみ実行: {modified_tests}")
+                test_targets = modified_tests
+            else:
+                # 変更されたテストがない場合はプロジェクト配下のテスト全体を実行
+                test_targets = [f"projects/{project_path.name}/tests/"] if project_path != self.root_dir else ["tests/"]
             
             result = subprocess.run(
-                ["uv", "run", "pytest", test_target, "-v"],
+                ["uv", "run", "pytest"] + test_targets + ["-v"],
                 cwd=self.root_dir,
                 capture_output=True,
                 text=True,
