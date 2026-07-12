@@ -324,6 +324,20 @@ class IssueOrchestrator:
                 except Exception as e:
                     logger.warning(f"  - テストファイル {test_file.name} のスキャン中にエラー: {e}")
 
+        # 4. 要件説明 (description) やタイトル (title) に直接言及されている .py ファイルを検出し、自動で related_files に追加する
+        mention_pattern = re.compile(r"([a-zA-Z0-9_\-\/]+\.py)")
+        for text in [title]:
+            for filename in mention_pattern.findall(text):
+                clean_name = filename.split("/")[-1]
+                # プロジェクトディレクトリ配下から本番コードを検索して解決
+                for py_file in project_path.glob(f"**/{clean_name}"):
+                    try:
+                        rel_p = py_file.relative_to(project_path)
+                        if rel_p not in related_files and "test_" not in rel_p.name:
+                            related_files.append(rel_p)
+                    except ValueError:
+                        continue
+
         # 重複を排除
         test_context_hints = list(set(test_context_hints))
 
