@@ -283,6 +283,16 @@ class AgentClient:
 
         logger.debug(f"  コードブロック抽出: {len(code_blocks)}個")
 
+        # デバッグ用：パース失敗時に生のレスポンスをファイルに保存してユーザーが確認できるようにする
+        if len(code_blocks) == 0:
+            try:
+                debug_file = Path("log/coder_raw_failed.txt")
+                debug_file.parent.mkdir(parents=True, exist_ok=True)
+                debug_file.write_text(raw_output, encoding="utf-8")
+                logger.error(f"  [DEBUG] Coderパース失敗。生データを以下に保存しました: {debug_file.as_posix()}")
+            except Exception as e:
+                logger.error(f"  [DEBUG] デバッグ生データの書き出し失敗: {e}")
+
         # ファイルパス付きコードブロック（例: # filepath: tools/example.py）
         files_dict = {}
         for code_block in code_blocks:
