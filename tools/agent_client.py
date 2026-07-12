@@ -271,11 +271,14 @@ class AgentClient:
 
     def _parse_coder_response(self, raw_output: str) -> Dict[str, Any]:
         """Coder応答からコードブロックを抽出"""
-        # ```python\n...\n``` 形式のコードブロックを抽出
+        # 改行コードの差異 (\r\n) を \n に正規化して改行一致エラーを防止
+        normalized_output = raw_output.replace('\r\n', '\n')
+
+        # ```python ... ```, ```py ... ```, またはプレーンな ``` ... ``` 形式を大文字小文字を区別せず抽出
         code_blocks = re.findall(
-            r'```python\s*\n(.*?)\n```',
-            raw_output,
-            re.DOTALL
+            r'```(?:py(?:thon)?)?\s*\n(.*?)\n```',
+            normalized_output,
+            re.DOTALL | re.IGNORECASE
         )
 
         logger.debug(f"  コードブロック抽出: {len(code_blocks)}個")
