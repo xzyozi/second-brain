@@ -314,6 +314,11 @@ class IssueOrchestrator:
                     for line in test_content.split("\n"):
                         if "import" in line and any(f.stem in line for f in related_files):
                             clean_line = line.strip()
+                            # 相対インポート (.. や .) はテスト環境でエラーを起こしやすいため絶対インポート形式に正規化
+                            if "from .." in clean_line:
+                                clean_line = clean_line.replace("from ..", "from ")
+                            elif "from ." in clean_line:
+                                clean_line = clean_line.replace("from .", "from ")
                             test_context_hints.append(f"- 期待されるインポート形式: `{clean_line}`")
 
                 except Exception as e:
