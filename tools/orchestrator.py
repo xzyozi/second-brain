@@ -338,6 +338,31 @@ class IssueOrchestrator:
                     except ValueError:
                         continue
 
+        # 5. 登録済みの関連ファイルからインポート依存モジュールを解析し、自動で追加する
+        dependency_pattern = re.compile(r"(?:from\s+([\w\.]+)\s+import|import\s+([\w\.]+))")
+        additional_files = []
+        for rel_file in list(related_files):
+            file_path = project_path / rel_file
+            if not file_path.exists():
+                continue
+            try:
+                content = file_path.read_text(encoding="utf-8")
+                for match in dependency_pattern.findall(content):
+                    module_name = match[0] or match[1]
+                    parts = module_name.split(".")
+                    last_part = parts[-1]
+                    # プロジェクト内でモジュール名に一致するファイルを検索
+                    for py_file in project_path.glob(f"**/{last_part}.py"):
+                        try:
+                            resolved_rel = py_file.relative_to(project_path)
+                            if resolved_rel not in related_files and resolved_rel not in additional_files:
+                                additional_files.append(resolved_rel)
+                        except ValueError:
+                            continue
+            except Exception as e:
+                logger.warning(f"  - インポート依存スキャン中にエラー ({rel_file}): {e}")
+        related_files.extend(additional_files)
+
         # 重複を排除
         test_context_hints = list(set(test_context_hints))
 
@@ -423,6 +448,11 @@ class IssueOrchestrator:
         constraints: Constraints
     ) -> GeneratedCode:
         """CoderエージェントLLMを呼び出してコード生成"""
+        # 調査や分析のみでファイル変更がない場合、Coder呼び出しをスキップして早期リターン
+        if not impl_plan.files_to_create and not impl_plan.files_to_edit:
+            logger.info("  - 作成・編集対象のファイルが指定されていないため、Coderの呼び出しをスキップします。")
+            return GeneratedCode(files={}, metadata={"stub": True})
+
         logger.info(f"  - Coderエージェント呼び出し")
 
         prompt = self.prompt_builder.build_coding_prompt(
