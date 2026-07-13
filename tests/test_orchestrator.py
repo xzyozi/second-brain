@@ -354,6 +354,43 @@ class TestIssueOrchestrator:
             assert result.error_log is not None
             assert "Test failed" in str(result.error_log) or "TestFailureError" in str(result.error_log)
 
+    def test_merge_python_code(self, tmp_path):
+        """ASTマージ機能のテスト"""
+        orchestrator = IssueOrchestrator(root_dir=tmp_path)
+        
+        # 既存コード (GrepEngineなどが定義されている)
+        existing_code = """import os
+import sys
+
+class GrepResult:
+    def __init__(self, file_path):
+        self.file_path = file_path
+
+class GrepEngine:
+    def search(self):
+        return 0
+"""
+
+        # Coderから返ってきた新規コード (別のSearchEngineのみ定義、GrepEngineなどが消失)
+        new_code = """import os
+from another_lib import Parser
+
+class SearchEngine:
+    def execute(self):
+        pass
+"""
+
+        # マージを実行
+        merged_code = orchestrator._merge_python_code(existing_code, new_code)
+
+        # 検証: 新規クラス SearchEngine と、既存クラス GrepResult, GrepEngine が共存していること
+        assert "class SearchEngine" in merged_code
+        assert "class GrepResult" in merged_code
+        assert "class GrepEngine" in merged_code
+        # インポートもマージされていること
+        assert "from another_lib import Parser" in merged_code
+        assert "import sys" in merged_code
+
 
 class TestTestFailureError:
     """TestFailureErrorのテスト"""

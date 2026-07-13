@@ -475,6 +475,96 @@ class IssueOrchestrator:
             metadata={"stub": False}
         )
 
+    def _merge_python_code(self, existing_code: str, new_code: str) -> str:
+        """
+        既存のPythonコードと新規生成されたPythonコードをマージする。
+        新規コードに存在しない既存のクラスや関数を、元の形式（コメント等含む）を維持したまま復元・統合します。
+        """
+        import ast
+
+        try:
+            existing_ast = ast.parse(existing_code)
+            new_ast = ast.parse(new_code)
+        except SyntaxError as e:
+            logger.warning(f"構文エラーのためASTマージをスキップします: {e}")
+            return new_code
+
+        existing_lines = existing_code.splitlines(keepends=True)
+        
+        # 1. 消失したトップレベル定義の抽出
+        # 既存コードのトップレベルシンボル
+        existing_symbols = {}
+        for node in existing_ast.body:
+            if isinstance(node, (ast.ClassDef, ast.FunctionDef)):
+                existing_symbols[node.name] = node
+
+        # 新規コードのトップレベルシンボル
+        new_symbols = {
+            node.name for node in new_ast.body 
+            if isinstance(node, (ast.ClassDef, ast.FunctionDef))
+        }
+
+        # 新規コードで削除されてしまったシンボルを抽出
+        missing_code_blocks = []
+        for name, node in existing_symbols.items():
+            if name not in new_symbols:
+                start_line = node.lineno - 1
+                end_line = getattr(node, "end_lineno", node.lineno)
+                block = "".join(existing_lines[start_line:end_line])
+                missing_code_blocks.append(block)
+
+        # 2. 消失したインポート文の抽出
+        existing_imports = []
+        for node in existing_ast.body:
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                existing_imports.append(node)
+
+        new_import_nodes = [
+            node for node in new_ast.body 
+            if isinstance(node, (ast.Import, ast.ImportFrom))
+        ]
+        
+        def get_import_key(node):
+            if isinstance(node, ast.Import):
+                return "import " + ",".join(sorted(alias.name for alias in node.names))
+            elif isinstance(node, ast.ImportFrom):
+                return f"from {node.module} import " + ",".join(sorted(alias.name for alias in node.names))
+            return ""
+
+        new_import_keys = {get_import_key(node) for node in new_import_nodes}
+        
+        missing_imports = []
+        for node in existing_imports:
+            if get_import_key(node) not in new_import_keys:
+                start_line = node.lineno - 1
+                end_line = getattr(node, "end_lineno", node.lineno)
+                block = "".join(existing_lines[start_line:end_line])
+                missing_imports.append(block)
+
+        merged_lines = []
+
+        # 既存のインポートを新規コードの先頭にマージ
+        if missing_imports:
+            merged_lines.append("# --- Restored Imports by Merging ---\n")
+            merged_lines.extend(missing_imports)
+            if not missing_imports[-1].endswith("\n"):
+                merged_lines.append("\n")
+            merged_lines.append("\n")
+
+        merged_lines.append(new_code)
+
+        # 既存のクラス/関数を新規コードの末尾にマージ
+        if missing_code_blocks:
+            if not new_code.endswith("\n"):
+                merged_lines.append("\n")
+            merged_lines.append("\n# --- Restored Classes/Functions by Merging ---\n")
+            for block in missing_code_blocks:
+                merged_lines.append(block)
+                if not block.endswith("\n"):
+                    merged_lines.append("\n")
+
+        return "".join(merged_lines)
+
     def _write_files(self, project_path: Path, generated_code: GeneratedCode) -> List[str]:
         """生成されたコードをファイルに書き込む"""
         logger.info(f"  - {len(generated_code.files)}個のファイルを書き込み")
@@ -489,6 +579,17 @@ class IssueOrchestrator:
                     filepath = project_path / filepath
 
             filepath.parent.mkdir(parents=True, exist_ok=True)
+
+            # 既存のPythonファイルの場合、上書きせずにASTマージを行う
+            if filepath.exists() and filepath.suffix == ".py":
+                try:
+                    existing_content = filepath.read_text(encoding="utf-8")
+                    merged_content = self._merge_python_code(existing_content, content)
+                    content = merged_content
+                    logger.info(f"    - Merged with existing AST structure for {filepath.name}")
+                except Exception as e:
+                    logger.warning(f"    - AST merge failed for {filepath.name}, fallback to overwrite: {e}")
+
             filepath.write_text(content, encoding="utf-8", newline="\n")
             written_files.append(str(filepath))
             logger.info(f"    ✓ {filepath}")
