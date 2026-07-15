@@ -166,16 +166,14 @@ class AgentClient:
         """subprocess でOpenCode CLIを実行"""
         logger.debug(f"  コマンド実行: {self.opencode_bin} run --agent {agent_name}")
 
-        # Windows環境対応: shell=True を使用
-        # プロンプトにシングルクォートが含まれる場合はエスケープ
-        safe_prompt = prompt.replace("'", "'\\''")
-
-        cmd = f"{self.opencode_bin} run --agent {agent_name} '{safe_prompt}'"
+        import shutil
+        cmd_path = shutil.which(self.opencode_bin) or self.opencode_bin
+        cmd = [cmd_path, "run", "--agent", agent_name, prompt]
 
         try:
             result = subprocess.run(
                 cmd,
-                shell=True,
+                shell=False,
                 capture_output=True,
                 text=True,
                 timeout=self.timeout,
