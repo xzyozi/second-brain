@@ -86,3 +86,25 @@ class TestParseAndCheck:
         blocked, actionable = check_blockers_mod.parse_and_check("")
         assert blocked == []
         assert actionable == []
+
+
+# ── parse_tasks_file ────────────────────────────────────────────────
+
+class TestParseTasksFile:
+    def test_parse_tasks_file_blockedby(self, check_blockers_mod):
+        tasks_text = """# Tasks
+- [ ] [TFG-001] タスク1  <!-- priority:medium -->
+- [ ] [TFG-002] タスク2  <!-- priority:medium blockedby:#TFG-001 -->
+"""
+        blocked, actionable = check_blockers_mod.parse_tasks_file(tasks_text, "TFG", "test_file_grep")
+        
+        # B2ブロッカーが検出されることを検証
+        assert len(blocked) == 1
+        assert blocked[0]["id"] == "TFG-002"
+        assert blocked[0]["type"] == "B2"
+        assert blocked[0]["detail"] == "blockedby: #TFG-001"
+        
+        # TFG-001はactionable、TFG-002はblockedなのでactionableに含まれないことを検証
+        assert "TFG-001" in actionable
+        assert "TFG-002" not in actionable
+
