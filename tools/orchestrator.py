@@ -267,6 +267,97 @@ class IssueOrchestrator:
         except Exception as e:
             logger.error(f"  - tasks.md のステータス更新中にエラーが発生しました: {e}")
 
+    def execute_batch(self, project: Optional[str] = None, max_retries: int = 2, dry_run: bool = False) -> bool:
+        """
+        依存関係を考慮して、ブロックされていない実行可能タスクを自動で連続実行する
+        """
+        logger.info(f"[BATCH START] バッチ実行を開始します (project: {project or 'すべて'})")
+        
+        executed_count = 0
+        
+        while True:
+            # 1. score-issues.py と check-blockers.py を実行してキャッシュを更新
+            try:
+                logger.info("  - キャッシュを更新中 (score-issues & check-blockers)...")
+                py_bin = sys.executable
+                
+                # スコア計算
+                subprocess.run(
+                    [py_bin, "tools/score-issues.py"],
+                    cwd=self.root_dir,
+                    check=True,
+                    capture_output=True,
+                    text=True
+                )
+                
+                # ブロッカー判定
+                subprocess.run(
+                    [py_bin, "tools/check-blockers.py"],
+                    cwd=self.root_dir,
+                    check=True,
+                    capture_output=True,
+                    text=True
+                )
+                
+            except subprocess.CalledProcessError as e:
+                logger.error(f"キャッシュ更新用スクリプトの実行に失敗しました: {e.stderr}")
+                return False
+                
+            # 2. blocked.json をロードして actionable リストを取得
+            blocked_json_path = self.root_dir / "tools" / ".cache" / "blocked.json"
+            if not blocked_json_path.exists():
+                logger.error(f"blocked.json が存在しません")
+                return False
+                
+            try:
+                blocked_data = json.loads(blocked_json_path.read_text(encoding="utf-8"))
+            except Exception as e:
+                logger.error(f"blocked.json のロードに失敗しました: {e}")
+                return False
+                
+            actionable_list = blocked_data.get("actionable", [])
+            
+            # 3. priority-cache.json をロードして actionable の中からスコアの高い順にソートする
+            priority_cache_path = self.root_dir / "tools" / ".cache" / "priority-cache.json"
+            scored_issues = {}
+            if priority_cache_path.exists():
+                try:
+                    scored_issues = json.loads(priority_cache_path.read_text(encoding="utf-8"))
+                except Exception as e:
+                    logger.warning(f"priority-cache.json のロードに失敗しました: {e}")
+            
+            filtered_actionable = []
+            for issue_id in actionable_list:
+                try:
+                    req = self._gather_requirements(issue_id)
+                    if project and req.project_path.name != project:
+                        continue
+                    filtered_actionable.append(req)
+                except Exception as e:
+                    logger.debug(f"Issue {issue_id} のメタデータ読み込みスキップ: {e}")
+                    continue
+                    
+            if not filtered_actionable:
+                logger.info(f"[BATCH SUCCESS] 実行可能なタスクがもうありません。終了します。 (実行数: {executed_count})")
+                return True
+                
+            score_map = {issue["id"]: issue.get("score", 0.0) for issue in scored_issues.get("issues", [])}
+            filtered_actionable.sort(key=lambda req: score_map.get(req.issue_id, 0.0), reverse=True)
+            
+            next_req = filtered_actionable[0]
+            logger.info(f"  - 次の実行タスク: {next_req.issue_id} ({next_req.title}) [Score: {score_map.get(next_req.issue_id, 0.0)}]")
+            
+            result = self.execute_issue(next_req.issue_id, max_retries=max_retries, dry_run=dry_run)
+            
+            if not result.success:
+                logger.error(f"[BATCH FAILURE] タスク {next_req.issue_id} の実行に失敗しました。バッチ処理を中断します。")
+                return False
+                
+            executed_count += 1
+            if dry_run:
+                logger.info(f"[BATCH SUCCESS] ドライランのため、1件実行した時点でバッチ処理を終了します。")
+                return True
+
     def _gather_requirements(self, issue_id: str) -> Requirements:
         """Issue関連の要件を収集"""
         logger.info(f"  - tasks.mdからIssue情報を読み込み")
@@ -741,8 +832,16 @@ def main():
     execute_parser.add_argument("--max-retries", type=int, default=2, help="最大リトライ回数")
     execute_parser.add_argument("--debug", action="store_true", help="デバッグログを有効にする")
 
+    # batch サブコマンド
+    batch_parser = subparsers.add_parser("batch", help="依存関係を考慮して自動連続実行")
+    batch_parser.add_argument("--project", help="実行対象のプロジェクト名")
+    batch_parser.add_argument("--dry-run", action="store_true", help="実際の書き込みを行わない")
+    batch_parser.add_argument("--max-retries", type=int, default=2, help="最大リトライ回数")
+    batch_parser.add_argument("--debug", action="store_true", help="デバッグログを有効にする")
+
     args = parser.parse_args()
 
+    # debugフラグの評価を args 全体に適用できるよう調整
     if getattr(args, "debug", False):
         # ルートハンドラ全体のログレベルを強制的にDEBUGに変更する
         for handler in logging.root.handlers:
@@ -774,6 +873,22 @@ def main():
         print("=" * 60)
 
         sys.exit(0 if result.success else 1)
+
+    elif args.command == "batch":
+        orchestrator = IssueOrchestrator()
+        success = orchestrator.execute_batch(
+            project=args.project,
+            max_retries=args.max_retries,
+            dry_run=args.dry_run
+        )
+
+        print("\n" + "=" * 60)
+        print("バッチ実行結果")
+        print("=" * 60)
+        print(f"成功: {success}")
+        print("=" * 60)
+
+        sys.exit(0 if success else 1)
 
     else:
         parser.print_help()

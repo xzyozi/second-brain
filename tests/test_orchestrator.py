@@ -7,6 +7,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
 import sys
+import json
 
 # tools/ をインポートパスに追加
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -498,6 +499,62 @@ class TestUpdateTaskStatus:
         assert "- [x] [ARCH-002] タスク2" in updated_content
         assert "- [ ] [ARCH-001] タスク1" in updated_content
         assert "- [x] [ARCH-003] タスク3" in updated_content
+
+
+
+class TestExecuteBatch:
+    """execute_batchのテスト"""
+
+    def test_execute_batch_success(self, tmp_path, monkeypatch, mocker):
+        # 準備: キャッシュディレクトリとモックJSON
+        cache_dir = tmp_path / "tools" / ".cache"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        
+        blocked_json = cache_dir / "blocked.json"
+        blocked_json.write_text(json.dumps({
+            "actionable": ["ARCH-001", "ARCH-002"]
+        }), encoding="utf-8")
+
+        priority_cache = cache_dir / "priority-cache.json"
+        priority_cache.write_text(json.dumps({
+            "issues": [
+                {"id": "ARCH-001", "score": 90.0},
+                {"id": "ARCH-002", "score": 80.0}
+            ]
+        }), encoding="utf-8")
+
+        # tasks.md の準備
+        tasks_md = tmp_path / "tasks.md"
+        tasks_md.write_text("""# Tasks
+- [ ] [ARCH-001] タスク1  <!-- priority:high -->
+- [ ] [ARCH-002] タスク2  <!-- priority:medium -->
+""", encoding="utf-8")
+
+        orchestrator = IssueOrchestrator(root_dir=tmp_path)
+
+        # subprocess.run と execute_issue のモック
+        mock_run = mocker.patch("subprocess.run")
+        
+        # 1回目のループではARCH-001とARCH-002がある
+        # execute_issueが完了した想定で、2回目のループではactionableリストが空になるようにモックする
+        call_count = 0
+        def mock_execute_issue(issue_id, max_retries=2, dry_run=False):
+            nonlocal call_count
+            call_count += 1
+            # 実行後、blocked.json を書き換えてループを抜けるようにする
+            blocked_json.write_text(json.dumps({
+                "actionable": []
+            }), encoding="utf-8")
+            return ExecutionResult(True, issue_id, {}, None, [], None)
+            
+        monkeypatch.setattr(orchestrator, "execute_issue", mock_execute_issue)
+
+        # 実行
+        success = orchestrator.execute_batch(dry_run=False)
+
+        assert success is True
+        assert call_count == 1
+        assert mock_run.call_count == 4  # score-issues.py と check-blockers.py (2回ループ分)
 
 
 class TestExecutionResult:
