@@ -56,6 +56,7 @@ def main():
                         choices=["critical", "high", "medium", "low", "none"])
     parser.add_argument("--estimate",   default=None, help="工数見積もり（例: 2h, 1d）")
     parser.add_argument("--parent",     default=None, help="親タスクのID（例: TFG-001）。指定時はサブタスクとして追記")
+    parser.add_argument("--blockedby",  default=None, help="依存する先行タスクのID（例: TFG-001）")
     args = parser.parse_args()
 
     tasks_path = Path(args.project_dir) / "tasks.md"
@@ -76,12 +77,15 @@ def main():
     parent_id = args.parent.strip("[]") if args.parent else None
     parent_meta = f" parent:{parent_id}" if parent_id else ""
 
+    blockedby_id = args.blockedby.strip("#[] ") if args.blockedby else None
+    blockedby_meta = f" blockedby:#{blockedby_id}" if blockedby_id else ""
+
     if parent_id:
         # ── サブタスク追記モード ──
         indent = "  "
         new_line = (
             f"{indent}- [ ] {args.task}  "
-            f"<!-- priority:{args.priority}{estimate}{parent_meta} added:{today} -->\n"
+            f"<!-- priority:{args.priority}{estimate}{parent_meta}{blockedby_meta} added:{today} -->\n"
         )
 
         lines = content.splitlines(keepends=True)
@@ -102,7 +106,7 @@ def main():
         # ── 通常のフラット追記モード（従来動作） ──
         new_line = (
             f"- [ ] {args.task}  "
-            f"<!-- priority:{args.priority}{estimate} added:{today} -->\n"
+            f"<!-- priority:{args.priority}{estimate}{blockedby_meta} added:{today} -->\n"
         )
 
         if "## 未着手" in content:

@@ -70,7 +70,7 @@ def freshness_score(block: str) -> int:
 
 # ── 依存スコア ───────────────────────────────────────────────────
 def dependency_score(block: str) -> int:
-    deps = len(re.findall(r"blockedby:\s*#\d+", block, re.IGNORECASE))
+    deps = len(re.findall(r"blockedby:\s*#?[A-Z0-9\-]+", block, re.IGNORECASE))
     if deps == 0: return 5
     if deps == 1: return 3
     if deps == 2: return 1
