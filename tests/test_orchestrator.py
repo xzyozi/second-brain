@@ -149,6 +149,36 @@ class TestIssueOrchestrator:
         with pytest.raises(OrchestratorError, match="is blocked by incomplete dependency: ARCH-001"):
             orchestrator._gather_requirements("ARCH-002")
 
+    def test_gather_requirements_multiple_blockedby_incomplete(self, tmp_path):
+        """複数のblockedbyのうち、1つでも未完了のものがあればエラーになるテスト"""
+        tasks_md = tmp_path / "tasks.md"
+        tasks_md.write_text("""
+# タスクリスト
+- [x] [ARCH-001] 先行タスクA（完了）  <!-- priority:high -->
+- [ ] [ARCH-002] 先行タスクB（未完了）  <!-- priority:high -->
+- [ ] [ARCH-003] 後続タスク  <!-- priority:medium blockedby:#ARCH-001 blockedby:#ARCH-002 -->
+""", encoding="utf-8")
+
+        orchestrator = IssueOrchestrator(root_dir=tmp_path)
+
+        with pytest.raises(OrchestratorError, match="is blocked by incomplete dependency: ARCH-002"):
+            orchestrator._gather_requirements("ARCH-003")
+
+    def test_gather_requirements_multiple_blockedby_ok(self, tmp_path):
+        """複数のblockedbyがすべて完了している場合は正常に動作するテスト"""
+        tasks_md = tmp_path / "tasks.md"
+        tasks_md.write_text("""
+# タスクリスト
+- [x] [ARCH-001] 先行タスクA（完了）  <!-- priority:high -->
+- [x] [ARCH-002] 先行タスクB（完了）  <!-- priority:high -->
+- [ ] [ARCH-003] 後続タスク  <!-- priority:medium blockedby:#ARCH-001 blockedby:#ARCH-002 -->
+""", encoding="utf-8")
+
+        orchestrator = IssueOrchestrator(root_dir=tmp_path)
+        requirements = orchestrator._gather_requirements("ARCH-003")
+
+        assert requirements.issue_id == "ARCH-003"
+
     def test_verify_constraints(self, tmp_path):
         """制約検証テスト"""
         orchestrator = IssueOrchestrator(root_dir=tmp_path)

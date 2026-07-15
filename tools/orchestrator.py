@@ -279,17 +279,20 @@ class IssueOrchestrator:
         parent_id = parent_match.group(1).strip("[]") if parent_match else None
 
         # blockedby 抽出とブロック検証
-        blockedby_match = re.search(rf"{re.escape(issue_id)}.*?blockedby:([^\s]+)", content)
-        if blockedby_match:
-            dependency_id = blockedby_match.group(1).strip("#[] ")
-            # 依存先タスクの状態を tasks.md から走査
-            # 依存先タスクが完了（- [x]）しているか確認する
-            dep_pattern = rf"-\s*\[([ x/])\]\s+\[?{re.escape(dependency_id)}\]?"
-            dep_match = re.search(dep_pattern, content)
-            if dep_match:
-                status_char = dep_match.group(1)
-                if status_char != "x":
-                    raise OrchestratorError(f"Issue {issue_id} is blocked by incomplete dependency: {dependency_id}")
+        task_line_match = re.search(rf"^.*\[{re.escape(issue_id)}\].*$", content, re.MULTILINE)
+        if task_line_match:
+            task_line = task_line_match.group(0)
+            blockedby_matches = re.findall(r"blockedby:([^\s]+)", task_line)
+            for dep_id in blockedby_matches:
+                dependency_id = dep_id.strip("#[] ")
+                # 依存先タスクの状態を tasks.md から走査
+                # 依存先タスクが完了（- [x]）しているか確認する
+                dep_pattern = rf"-\s*\[([ x/])\]\s+\[?{re.escape(dependency_id)}\]?"
+                dep_match = re.search(dep_pattern, content)
+                if dep_match:
+                    status_char = dep_match.group(1)
+                    if status_char != "x":
+                        raise OrchestratorError(f"Issue {issue_id} is blocked by incomplete dependency: {dependency_id}")
 
         # 3. 既存のテストファイルを走査し、期待されるファイルパスとキーワードを抽出 (対策B)
         related_files = []
