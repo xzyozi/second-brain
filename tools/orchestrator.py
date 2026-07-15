@@ -274,6 +274,23 @@ class IssueOrchestrator:
         priority_match = re.search(rf"{re.escape(issue_id)}.*?priority:(\w+)", content)
         priority = priority_match.group(1) if priority_match else "medium"
 
+        # parent_id 抽出
+        parent_match = re.search(rf"{re.escape(issue_id)}.*?parent:([^\s]+)", content)
+        parent_id = parent_match.group(1).strip("[]") if parent_match else None
+
+        # blockedby 抽出とブロック検証
+        blockedby_match = re.search(rf"{re.escape(issue_id)}.*?blockedby:([^\s]+)", content)
+        if blockedby_match:
+            dependency_id = blockedby_match.group(1).strip("#[] ")
+            # 依存先タスクの状態を tasks.md から走査
+            # 依存先タスクが完了（- [x]）しているか確認する
+            dep_pattern = rf"-\s*\[([ x/])\]\s+\[?{re.escape(dependency_id)}\]?"
+            dep_match = re.search(dep_pattern, content)
+            if dep_match:
+                status_char = dep_match.group(1)
+                if status_char != "x":
+                    raise OrchestratorError(f"Issue {issue_id} is blocked by incomplete dependency: {dependency_id}")
+
         # 3. 既存のテストファイルを走査し、期待されるファイルパスとキーワードを抽出 (対策B)
         related_files = []
         test_context_hints = []
@@ -308,7 +325,7 @@ class IssueOrchestrator:
                     # テスト内でアサーションされている必須キーワードを自動抽出してヒントにする
                     for kw in keyword_pattern.findall(test_content):
                         if len(kw) > 2:  # 極端に短い文字列は除外
-                            test_context_hints.append(f"- 生成コード内に必ず含めるべき必須キーワード: `{kw}`")
+                             test_context_hints.append(f"- 生成コード内に必ず含めるべき必須キーワード: `{kw}`")
 
                     # 関連ファイルがインポートされている行を抽出
                     for line in test_content.split("\n"):
@@ -383,7 +400,7 @@ class IssueOrchestrator:
             project_path=project_path,
             related_files=related_files,
             priority=priority,
-            parent_id=None
+            parent_id=parent_id
         )
 
     def _verify_constraints(self, requirements: Requirements) -> Constraints:

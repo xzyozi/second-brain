@@ -120,6 +120,35 @@ class TestIssueOrchestrator:
         with pytest.raises(OrchestratorError, match="が tasks.md に見つかりません"):
             orchestrator._gather_requirements("NONEXISTENT-999")
 
+    def test_gather_requirements_with_parent_and_blockedby_ok(self, tmp_path):
+        """parent_idおよび完了済みのblockedby依存関係を持つ要件収集のテスト"""
+        tasks_md = tmp_path / "tasks.md"
+        tasks_md.write_text("""
+# タスクリスト
+- [x] [ARCH-001] 先行タスク  <!-- priority:high -->
+- [ ] [ARCH-002] 後続タスク  <!-- priority:medium parent:ARCH-003 blockedby:#ARCH-001 -->
+""", encoding="utf-8")
+
+        orchestrator = IssueOrchestrator(root_dir=tmp_path)
+        requirements = orchestrator._gather_requirements("ARCH-002")
+
+        assert requirements.issue_id == "ARCH-002"
+        assert requirements.parent_id == "ARCH-003"
+
+    def test_gather_requirements_blockedby_incomplete(self, tmp_path):
+        """未完了のblockedby依存関係がある場合にエラーとなるテスト"""
+        tasks_md = tmp_path / "tasks.md"
+        tasks_md.write_text("""
+# タスクリスト
+- [ ] [ARCH-001] 先行タスク（未完了）  <!-- priority:high -->
+- [ ] [ARCH-002] 後続タスク  <!-- priority:medium blockedby:#ARCH-001 -->
+""", encoding="utf-8")
+
+        orchestrator = IssueOrchestrator(root_dir=tmp_path)
+
+        with pytest.raises(OrchestratorError, match="is blocked by incomplete dependency: ARCH-001"):
+            orchestrator._gather_requirements("ARCH-002")
+
     def test_verify_constraints(self, tmp_path):
         """制約検証テスト"""
         orchestrator = IssueOrchestrator(root_dir=tmp_path)
