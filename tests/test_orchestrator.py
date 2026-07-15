@@ -469,6 +469,37 @@ class TestTestFailureError:
         assert "Tests failed" in str(error)
 
 
+
+class TestUpdateTaskStatus:
+    """_update_task_status_to_doneのテスト"""
+
+    def test_update_task_status_to_done_in_project_path(self, tmp_path):
+        """プロジェクトパス直下のtasks.mdのタスクステータスが[x]に更新されるテスト"""
+        tasks_md = tmp_path / "tasks.md"
+        tasks_md.write_text("""# Tasks
+- [ ] [ARCH-001] タスク1  <!-- priority:medium -->
+- [/] [ARCH-002] タスク2  <!-- priority:medium -->
+- [x] [ARCH-003] タスク3  <!-- priority:medium -->
+""", encoding="utf-8")
+
+        orchestrator = IssueOrchestrator(root_dir=tmp_path)
+        req = Requirements(
+            issue_id="ARCH-002",
+            title="タスク2",
+            description="説明",
+            project_path=tmp_path,
+            related_files=[],
+            priority="medium"
+        )
+
+        orchestrator._update_task_status_to_done(req)
+
+        updated_content = tasks_md.read_text(encoding="utf-8")
+        assert "- [x] [ARCH-002] タスク2" in updated_content
+        assert "- [ ] [ARCH-001] タスク1" in updated_content
+        assert "- [x] [ARCH-003] タスク3" in updated_content
+
+
 class TestExecutionResult:
     """ExecutionResultデータクラスのテスト"""
 

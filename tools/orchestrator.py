@@ -201,6 +201,9 @@ class IssueOrchestrator:
             if not test_result.passed:
                 raise TestFailureError(test_result)
 
+            # タスクの自動ステータス更新
+            self._update_task_status_to_done(requirements)
+
             logger.info(f"[SUCCESS] Issue実行完了: {issue_id}")
             return ExecutionResult(
                 success=True,
@@ -221,6 +224,48 @@ class IssueOrchestrator:
                 files_changed=[],
                 test_result=None
             )
+
+    def _update_task_status_to_done(self, requirements: Requirements):
+        """タスクのステータスを tasks.md において [x]（完了）に更新する"""
+        logger.info(f"  - tasks.mdのステータスを完了 [x] に更新: {requirements.issue_id}")
+        
+        target_tasks_md = None
+        p_tasks = requirements.project_path / "tasks.md"
+        if p_tasks.exists():
+            target_tasks_md = p_tasks
+        else:
+            root_tasks = self.root_dir / "tasks.md"
+            if root_tasks.exists():
+                target_tasks_md = root_tasks
+                
+        if not target_tasks_md:
+            logger.warning(f"ステータス更新用の tasks.md が見つかりませんでした")
+            return
+
+        try:
+            content = target_tasks_md.read_text(encoding="utf-8")
+            lines = content.splitlines(keepends=True)
+            
+            import re
+            pattern = re.compile(rf"(-\s*\[)([ /x])(\]\s+\[?{re.escape(requirements.issue_id)}\]?)")
+            
+            updated = False
+            for idx, line in enumerate(lines):
+                match = pattern.search(line)
+                if match:
+                    new_line = pattern.sub(r"\g<1>x\g<3>", line)
+                    lines[idx] = new_line
+                    updated = True
+                    break
+            
+            if updated:
+                target_tasks_md.write_text("".join(lines), encoding="utf-8")
+                logger.info(f"    ✓ tasks.md の {requirements.issue_id} を完了 [x] に更新しました")
+            else:
+                logger.warning(f"    - tasks.md 内に {requirements.issue_id} の更新対象行が見つかりませんでした")
+                
+        except Exception as e:
+            logger.error(f"  - tasks.md のステータス更新中にエラーが発生しました: {e}")
 
     def _gather_requirements(self, issue_id: str) -> Requirements:
         """Issue関連の要件を収集"""
