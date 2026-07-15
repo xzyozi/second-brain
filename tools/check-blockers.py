@@ -5,7 +5,7 @@ roadmap.md を解析し、ブロッカー6分類を正規表現で確定的に�
 LLM を一切使用しない決定的スクリプト。
 
 使い方:
-  python3 tools/check-blockers.py [--roadmap roadmap.md] [--out tools/.cache/blocked.json]
+  uv run python tools/check-blockers.py [--roadmap roadmap.md] [--out tools/.cache/blocked.json]
 """
 
 import re
@@ -181,6 +181,9 @@ def parse_tasks_file(text: str, project_key: str, project_name: str) -> tuple[li
             if m_b:
                 extra_lines.append(f"- blockedby: {m_b.group(1)}")
 
+            # 親タスクID の抽出
+            m_parent = re.search(r"parent:([^\s]+)", comment_content)
+
             # 各種ブロッカーワードの透過的転送
             for kw in ["仕様未確定", "要確認", "TBD", "spec?", "unclear", "not defined",
                        "waiting", "review", "external", "vendor", "resource", "予算未確定"]:
@@ -213,6 +216,9 @@ def parse_tasks_file(text: str, project_key: str, project_name: str) -> tuple[li
         if hits:
             for h in hits:
                 h["project"] = project_name
+                # 親タスクIDがあればバインド
+                if m_parent:
+                    h["parent"] = m_parent.group(1)
             blocked_all.extend(hits)
             blocked_ids.add(iid)
 
