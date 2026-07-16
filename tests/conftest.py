@@ -93,3 +93,19 @@ def sample_tasks_text():
 - [x] 完了済みタスク <!-- priority:low -->
 - [/] 進行中のタスク <!-- priority:high estimate:1h added:2026-06-27 -->
 """
+
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--run-llm", action="store_true", default=False, help="LLMの呼び出しを伴うインテグレーションテストを実行する"
+    )
+
+
+def pytest_collection_modifyitems(config, items):
+    if config.getoption("--run-llm"):
+        return
+    skip_llm = pytest.mark.skip(reason="--run-llm オプションが指定されていないためスキップします")
+    for item in items:
+        if "llm" in item.keywords:
+            item.add_marker(skip_llm)
+
