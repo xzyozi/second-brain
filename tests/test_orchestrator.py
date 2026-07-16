@@ -505,7 +505,7 @@ class TestUpdateTaskStatus:
 class TestExecuteBatch:
     """execute_batchのテスト"""
 
-    def test_execute_batch_success(self, tmp_path, monkeypatch, mocker):
+    def test_execute_batch_success(self, tmp_path, monkeypatch):
         # 準備: キャッシュディレクトリとモックJSON
         cache_dir = tmp_path / "tools" / ".cache"
         cache_dir.mkdir(parents=True, exist_ok=True)
@@ -532,9 +532,6 @@ class TestExecuteBatch:
 
         orchestrator = IssueOrchestrator(root_dir=tmp_path)
 
-        # subprocess.run と execute_issue のモック
-        mock_run = mocker.patch("subprocess.run")
-        
         # 1回目のループではARCH-001とARCH-002がある
         # execute_issueが完了した想定で、2回目のループではactionableリストが空になるようにモックする
         call_count = 0
@@ -549,12 +546,15 @@ class TestExecuteBatch:
             
         monkeypatch.setattr(orchestrator, "execute_issue", mock_execute_issue)
 
-        # 実行
-        success = orchestrator.execute_batch(dry_run=False)
+        # subprocess.run をモック
+        from unittest.mock import patch
+        with patch("subprocess.run") as mock_run:
+            # 実行
+            success = orchestrator.execute_batch(dry_run=False)
 
-        assert success is True
-        assert call_count == 1
-        assert mock_run.call_count == 4  # score-issues.py と check-blockers.py (2回ループ分)
+            assert success is True
+            assert call_count == 1
+            assert mock_run.call_count == 4  # score-issues.py と check-blockers.py (2回ループ分)
 
 
 class TestExecutionResult:
