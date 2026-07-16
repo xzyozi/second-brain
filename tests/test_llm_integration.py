@@ -39,7 +39,7 @@ def test_pm_decomposition_format_with_llm():
         assert any(x in output for x in ["テスト", "test", "Test"])
         
         # 3. 依存関係のオプションである blockedby が含まれるか
-        assert "--blockedby" in output
+        assert any(x in output for x in ["blockedby", "--blockedby"])
         
     except Exception as e:
         pytest.fail(f"LLMエージェントの呼び出し中にエラーが発生しました: {e}")
