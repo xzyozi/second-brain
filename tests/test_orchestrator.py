@@ -199,6 +199,38 @@ class TestIssueOrchestrator:
         assert constraints.line_ending == "LF"
         assert isinstance(constraints.allowed_imports, list)
 
+    def test_verify_constraints_with_project_json(self, tmp_path):
+        """project.jsonが存在する場合の制約検証テスト"""
+        project_json = tmp_path / "project.json"
+        project_json.write_text(json.dumps({
+            "key": "TEST",
+            "name": "test_project",
+            "constraints": {
+                "external_modules_forbidden": True,
+                "allowed_imports": ["numpy", "pandas"],
+                "file_encoding": "utf-8",
+                "line_ending": "LF",
+                "cooldown_days": 5
+            }
+        }), encoding="utf-8")
+
+        orchestrator = IssueOrchestrator(root_dir=tmp_path)
+        requirements = Requirements(
+            issue_id="TEST-001",
+            title="テスト",
+            description="説明",
+            project_path=tmp_path,
+            related_files=[],
+            priority="high"
+        )
+
+        constraints = orchestrator._verify_constraints(requirements)
+
+        assert constraints.external_modules_forbidden is True
+        assert "numpy" in constraints.allowed_imports
+        assert "sys" in constraints.allowed_imports
+        assert constraints.cooldown_days == 5
+
     @patch('tools.agent_client.AgentClient.call_agent')
     def test_generate_implementation_plan(self, mock_call_agent, tmp_path):
         """実装指示書生成テスト"""
@@ -293,14 +325,16 @@ class TestIssueOrchestrator:
             # pytestが成功するケース
             mock_run.return_value = MagicMock(
                 returncode=0,
-                stdout="5 passed in 0.5s\n",
+                stdout="====== 5 passed, 1 skipped in 0.5s ======\n",
                 stderr=""
             )
 
             test_result = orchestrator._run_tests(tmp_path, [])
 
             assert test_result.passed is True
+            assert test_result.total_tests == 6
             assert test_result.failed_tests == 0
+            assert test_result.duration == 0.5
             assert test_result.error_log == ""
 
     def test_run_tests_failure(self, tmp_path):
@@ -311,14 +345,16 @@ class TestIssueOrchestrator:
             # pytestが失敗するケース
             mock_run.return_value = MagicMock(
                 returncode=1,
-                stdout="3 passed, 2 failed\n",
+                stdout="====== 3 passed, 2 failed in 0.8s ======\n",
                 stderr="AssertionError: test failed\n"
             )
 
             test_result = orchestrator._run_tests(tmp_path, [])
 
             assert test_result.passed is False
-            assert test_result.failed_tests == 1
+            assert test_result.total_tests == 5
+            assert test_result.failed_tests == 2
+            assert test_result.duration == 0.8
             assert "AssertionError" in test_result.error_log
 
     def test_run_tests_timeout(self, tmp_path):
@@ -555,6 +591,41 @@ class TestExecuteBatch:
             assert success is True
             assert call_count == 1
             assert mock_run.call_count == 4  # score-issues.py と check-blockers.py (2回ループ分)
+
+    def test_record_execution_history(self, tmp_path):
+        """実行履歴の記録テスト"""
+        orchestrator = IssueOrchestrator(root_dir=tmp_path)
+        
+        test_res = TestResult(
+            passed=True,
+            total_tests=10,
+            failed_tests=0,
+            error_log="",
+            duration=1.5
+        )
+        exec_res = ExecutionResult(
+            success=True,
+            issue_id="TEST-001",
+            context_data={"some": "data"},
+            error_log=None,
+            files_changed=["src/main.py"],
+            test_result=test_res
+        )
+        
+        orchestrator._record_execution_history(exec_res)
+        
+        history_file = tmp_path / "tools" / ".cache" / "execution_history.json"
+        assert history_file.exists()
+        
+        history_data = json.loads(history_file.read_text(encoding="utf-8"))
+        assert "executions" in history_data
+        assert len(history_data["executions"]) == 1
+        
+        record = history_data["executions"][0]
+        assert record["issue_id"] == "TEST-001"
+        assert record["success"] is True
+        assert record["files_changed"] == ["src/main.py"]
+        assert record["test_result"]["total_tests"] == 10
 
 
 class TestExecutionResult:

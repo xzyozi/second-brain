@@ -205,7 +205,7 @@ class IssueOrchestrator:
             self._update_task_status_to_done(requirements)
 
             logger.info(f"[SUCCESS] Issue実行完了: {issue_id}")
-            return ExecutionResult(
+            res = ExecutionResult(
                 success=True,
                 issue_id=issue_id,
                 context_data={"requirements": asdict(requirements)},
@@ -213,10 +213,12 @@ class IssueOrchestrator:
                 files_changed=write_result,
                 test_result=test_result
             )
+            self._record_execution_history(res)
+            return res
 
         except Exception as e:
             logger.error(f"[ERROR] Issue実行失敗: {issue_id}, エラー: {e}")
-            return ExecutionResult(
+            res = ExecutionResult(
                 success=False,
                 issue_id=issue_id,
                 context_data={},
@@ -224,6 +226,49 @@ class IssueOrchestrator:
                 files_changed=[],
                 test_result=None
             )
+            self._record_execution_history(res)
+            return res
+
+    def _record_execution_history(self, result: ExecutionResult):
+        """実行履歴を tools/.cache/execution_history.json に記録する"""
+        history_path = self.root_dir / "tools" / ".cache" / "execution_history.json"
+        history_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        history_data = {"executions": []}
+        if history_path.exists():
+            try:
+                history_data = json.loads(history_path.read_text(encoding="utf-8"))
+            except Exception as e:
+                logger.warning(f"既存の実行履歴ログのロードに失敗しました: {e}")
+                
+        test_info = None
+        if result.test_result:
+            test_info = {
+                "passed": result.test_result.passed,
+                "total_tests": result.test_result.total_tests,
+                "failed_tests": result.test_result.failed_tests,
+                "duration": result.test_result.duration
+            }
+            
+        execution_record = {
+            "issue_id": result.issue_id,
+            "timestamp": datetime.now().isoformat(),
+            "success": result.success,
+            "files_changed": result.files_changed,
+            "test_result": test_info,
+            "error_log": result.error_log
+        }
+        
+        if "executions" not in history_data:
+            history_data["executions"] = []
+            
+        history_data["executions"].append(execution_record)
+        
+        try:
+            history_path.write_text(json.dumps(history_data, ensure_ascii=False, indent=2), encoding="utf-8")
+            logger.info(f"    ✓ 実行履歴を記録しました: {history_path.name}")
+        except Exception as e:
+            logger.warning(f"実行履歴の書き込みに失敗しました: {e}")
 
     def _update_task_status_to_done(self, requirements: Requirements):
         """タスクのステータスを tasks.md において [x]（完了）に更新する"""
@@ -546,14 +591,41 @@ class IssueOrchestrator:
         """制約条件を検証（外部モジュール禁止等）"""
         logger.info(f"  - プロジェクト制約を確認")
 
-        # 例: pyproject.toml や README から外部モジュール禁止フラグを読む
-        # 簡易版では固定値を返す
+        # デフォルトの制約条件
+        external_forbidden = False
+        allowed_imports = ["sys", "os", "pathlib", "subprocess", "json", "dataclasses"]
+        file_encoding = "utf-8"
+        line_ending = "LF"
+        cooldown_days = 3
+
+        # project.json の探索とパース
+        project_json_path = requirements.project_path / "project.json"
+        if project_json_path.exists():
+            try:
+                project_meta = json.loads(project_json_path.read_text(encoding="utf-8"))
+                constraints_meta = project_meta.get("constraints", {})
+
+                if "external_modules_forbidden" in constraints_meta:
+                    external_forbidden = bool(constraints_meta["external_modules_forbidden"])
+                if "allowed_imports" in constraints_meta:
+                    allowed_meta = constraints_meta["allowed_imports"]
+                    if isinstance(allowed_meta, list):
+                        allowed_imports = list(set(allowed_imports + allowed_meta))
+                if "file_encoding" in constraints_meta:
+                    file_encoding = str(constraints_meta["file_encoding"])
+                if "line_ending" in constraints_meta:
+                    line_ending = str(constraints_meta["line_ending"])
+                if "cooldown_days" in constraints_meta:
+                    cooldown_days = int(constraints_meta["cooldown_days"])
+            except Exception as e:
+                logger.warning(f"project.json のロード中にエラーが発生しました: {e}")
+
         return Constraints(
-            external_modules_forbidden=False,  # プロジェクト次第
-            allowed_imports=["sys", "os", "pathlib", "subprocess", "json", "dataclasses"],
-            file_encoding="utf-8",
-            line_ending="LF",
-            cooldown_days=3
+            external_modules_forbidden=external_forbidden,
+            allowed_imports=allowed_imports,
+            file_encoding=file_encoding,
+            line_ending=line_ending,
+            cooldown_days=cooldown_days
         )
 
     def _generate_implementation_plan(
@@ -779,22 +851,50 @@ class IssueOrchestrator:
                 timeout=120
             )
 
-            # 簡易パース（実際には pytest --json などを使うべき）
+            # pytest の標準出力から件数と実行時間を抽出する
             passed = result.returncode == 0
             output_lines = result.stdout.split("\n")
 
-            # 例: "5 passed in 0.5s" のような行を探す
-            summary_line = [line for line in output_lines if "passed" in line or "failed" in line]
-            summary = summary_line[-1] if summary_line else ""
+            summary_line = ""
+            for line in reversed(output_lines):
+                if " in " in line and ("passed" in line or "failed" in line or "skipped" in line or "error" in line):
+                    summary_line = line
+                    break
 
-            logger.info(f"    テスト結果: {summary}")
+            logger.info(f"    テスト結果概要行: {summary_line.strip() if summary_line else 'なし'}")
+
+            passed_count = 0
+            failed_count = 0
+            skipped_count = 0
+            error_count = 0
+            duration = 0.0
+
+            if summary_line:
+                import re
+                m_passed = re.search(r"(\d+)\s+passed", summary_line)
+                m_failed = re.search(r"(\d+)\s+failed", summary_line)
+                m_skipped = re.search(r"(\d+)\s+skipped", summary_line)
+                m_error = re.search(r"(\d+)\s+error", summary_line)
+                m_duration = re.search(r"in\s+([\d\.]+)\s*s", summary_line)
+
+                passed_count = int(m_passed.group(1)) if m_passed else 0
+                failed_count = int(m_failed.group(1)) if m_failed else 0
+                skipped_count = int(m_skipped.group(1)) if m_skipped else 0
+                error_count = int(m_error.group(1)) if m_error else 0
+                if m_duration:
+                    duration = float(m_duration.group(1))
+
+            total_tests = passed_count + failed_count + skipped_count + error_count
+            failed_tests = failed_count + error_count
+            if not passed and failed_tests == 0:
+                failed_tests = 1
 
             return TestResult(
                 passed=passed,
-                total_tests=0,  # 簡易版
-                failed_tests=0 if passed else 1,
+                total_tests=total_tests,
+                failed_tests=failed_tests,
                 error_log=f"stdout:\n{result.stdout}\n\nstderr:\n{result.stderr}" if not passed else "",
-                duration=0.0
+                duration=duration
             )
 
         except subprocess.TimeoutExpired:
