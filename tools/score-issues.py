@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 import os
 import logging
+from tools.task_parser import parse_roadmap_file, parse_tasks_file as parser_parse_tasks
 
 # loggerの設定
 logging.basicConfig(
@@ -79,136 +80,70 @@ def dependency_score(block: str) -> int:
 # ── Issueパーサ ──────────────────────────────────────────────────
 def parse_issues(text: str) -> list[dict]:
     """
-    roadmap.md のフォーマット想定:
-      ## [#12] タイトル
-      - priority-high
-      - estimate: 4h
-      - updated: 2026-06-20
-      - blockedby: #8
+    roadmap.md をパースし、スコアを計算してリストを返す
     """
+    task_items = parse_roadmap_file(text)
     issues = []
-    # ## [#N] または ## #N または ## N のいずれにも対応
-    blocks = re.split(r"(?=^## )", text, flags=re.MULTILINE)
-    for block in blocks:
-        m = re.match(r"^## \[?#?([A-Z0-9\-]+)\]?\s+(.+)", block)
-        if not m:
-            continue
-        iid, title = m.group(1), m.group(2).strip()
-
+    for item in task_items:
         # 完了済みはスキップ
-        if re.search(r"status:\s*(done|closed|cancelled)", block, re.IGNORECASE):
+        if item.status in ["done", "closed", "cancelled"]:
             continue
-
-        # 優先度
-        p_match = re.search(r"priority[:\-](\w+)", block, re.IGNORECASE)
-        p_label = p_match.group(1).lower() if p_match else "none"
-        P = PRIORITY_MAP.get(p_label, 1)
-
-        F = freshness_score(block)
-        E = effort_score(parse_effort_hours(block))
-        D = dependency_score(block)
-
-        total    = P * WEIGHTS["P"] + F * WEIGHTS["F"] + E * WEIGHTS["E"] + D * WEIGHTS["D"]
-        score    = round(total / MAX_SCORE * 100, 1)
-
-        # タグ抽出（任意）
-        tags = re.findall(r"#(\w+)", block)
+            
+        P = PRIORITY_MAP.get(item.priority.lower(), 1)
+        
+        # freshness_score は raw_content (ブロック全体) から計算
+        F = freshness_score(item.raw_content)
+        # effort_score も同様
+        E = effort_score(parse_effort_hours(item.raw_content))
+        # dependency_score も同様
+        D = dependency_score(item.raw_content)
+        
+        total = P * WEIGHTS["P"] + F * WEIGHTS["F"] + E * WEIGHTS["E"] + D * WEIGHTS["D"]
+        score = round(total / MAX_SCORE * 100, 1)
+        
+        # タグ抽出 (raw_content から)
+        tags = re.findall(r"#(\w+)", item.raw_content)
         tags = [t for t in tags if not t.isdigit()]
-
+        
         issues.append({
-            "id":    iid,
-            "title": title,
+            "id":    item.id,
+            "title": item.title,
             "score": score,
             "axes":  {"P": P, "F": F, "E": E, "D": D},
             "raw_total": round(total, 2),
             "tags":  tags[:5],
         })
-
+        
     issues.sort(key=lambda x: x["score"], reverse=True)
     return issues
 
 
 def parse_tasks_file(text: str, project_key: str, project_name: str) -> list[dict]:
     """
-    tasks.md のフォーマット想定:
-      - [ ] [EC-001] タイトル  <!-- priority:high estimate:4h added:2026-06-27 -->
-      - [/] タイトル  <!-- priority:medium estimate:2h added:2026-06-26 blockedby:#8 -->
+    tasks.md のパースとスコアリング
     """
+    task_items = parser_parse_tasks(text, project_key, project_name)
     issues = []
-    task_index = 1
-    lines = text.splitlines()
-
-    for line in lines:
-        m_task = re.match(r"^\s*-\s*\[([ x/])\]\s+(.*)", line)
-        if not m_task:
-            continue
-        
-        status_char = m_task.group(1)
-        rest = m_task.group(2).strip()
-
+    for item in task_items:
         # 完了済みはスキップ
-        if status_char == "x":
+        if item.status == "done":
             continue
+            
+        # status を score-issues.py 側で使う形式 "in-progress" / "open" に統一
+        status = "in-progress" if item.status == "in-progress" else "open"
         
-        status = "in-progress" if status_char == "/" else "open"
-
-        # コメント部分 (<!-- ... -->) の抽出
-        m_comment = re.search(r"<!--\s*(.*?)\s*-->", rest)
-        comment_content = ""
-        if m_comment:
-            comment_content = m_comment.group(1)
-            title_part = rest[:m_comment.start()].strip()
-        else:
-            title_part = rest
-
-        # メタデータのデフォルト値
-        priority = "none"
-        estimate = ""
-        updated = ""
+        priority = item.priority
+        estimate = item.estimate
+        updated = item.updated
+        
         extra_lines = []
-
-        if comment_content:
-            m_p = re.search(r"priority:(\w+)", comment_content)
-            if m_p:
-                priority = m_p.group(1)
+        for b in item.blockedby:
+            dep = b if b.startswith("#") else f"#{b}"
+            extra_lines.append(f"- blockedby: {dep}")
+        for blocker in item.extra_blockers:
+            extra_lines.append(f"- {blocker}: info")
             
-            m_e = re.search(r"estimate:([^\s]+)", comment_content)
-            if m_e:
-                estimate = m_e.group(1)
-            
-            m_a = re.search(r"added:([\d\-]+)", comment_content)
-            if m_a:
-                updated = m_a.group(1)
-            
-            m_u = re.search(r"updated:([\d\-]+)", comment_content)
-            if m_u:
-                updated = m_u.group(1)
-            
-            m_b = re.search(r"blockedby:([^\s]+)", comment_content)
-            if m_b:
-                extra_lines.append(f"- blockedby: {m_b.group(1)}")
-
-            # 親タスクID の抽出
-            m_parent = re.search(r"parent:([^\s]+)", comment_content)
-
-            # 各種ブロッカーワードの透過的転送
-            for kw in ["仕様未確定", "要確認", "TBD", "spec?", "unclear", "not defined",
-                       "waiting", "review", "external", "vendor", "resource", "予算未確定"]:
-                if kw in comment_content:
-                    extra_lines.append(f"- {kw}: info")
-
-        # タイトルから [KEY-123] 形式のID抽出を試みる
-        m_id = re.match(r"^\[?([A-Z0-9\-]+)\]?\s*(.*)", title_part)
-        if m_id:
-            iid = m_id.group(1)
-            title = m_id.group(2).strip()
-        else:
-            iid = f"{project_key}-{task_index}"
-            title = title_part
-            task_index += 1
-
-        # 既存のパース・評価ロジックを再利用するため、一時的にロードマップ形式のブロックテキストに変換
-        block_text = f"## [{iid}] {title}\n"
+        block_text = f"## [{item.id}] {item.title}\n"
         block_text += f"- status: {status}\n"
         block_text += f"- priority-{priority}\n"
         if estimate:
@@ -217,17 +152,15 @@ def parse_tasks_file(text: str, project_key: str, project_name: str) -> list[dic
             block_text += f"- updated: {updated}\n"
         for extra in extra_lines:
             block_text += f"{extra}\n"
-
-        # 共通の解析ロジックを走らせるため、この1ブロックを parse_issues に渡す
+            
         parsed_list = parse_issues(block_text)
         if parsed_list:
-            item = parsed_list[0]
-            item["project"] = project_name
-            # 親タスクIDがあればバインド
-            if m_parent:
-                item["parent"] = m_parent.group(1)
-            issues.append(item)
-
+            res_item = parsed_list[0]
+            res_item["project"] = project_name
+            if item.parent:
+                res_item["parent"] = item.parent
+            issues.append(res_item)
+            
     return issues
 
 

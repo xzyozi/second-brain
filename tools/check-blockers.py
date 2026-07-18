@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 import os
 import logging
+from tools.task_parser import parse_tasks_file as parser_parse_tasks
 
 # loggerの設定
 logging.basicConfig(
@@ -128,80 +129,30 @@ def parse_tasks_file(text: str, project_key: str, project_name: str) -> tuple[li
     blocked_ids: set[str] = set()
     all_ids: list[str] = []
     
-    task_index = 1
-    lines = text.splitlines()
+    task_items = parser_parse_tasks(text, project_key, project_name)
+    blocked_all = []
+    blocked_ids = set()
+    all_ids = []
 
-    for line in lines:
-        m_task = re.match(r"^\s*-\s*\[([ x/])\]\s+(.*)", line)
-        if not m_task:
-            continue
-        
-        status_char = m_task.group(1)
-        rest = m_task.group(2).strip()
-
+    for item in task_items:
         # 完了済みはスキップ
-        if status_char == "x":
+        if item.status == "done":
             continue
+            
+        status = "in-progress" if item.status == "in-progress" else "open"
+        priority = item.priority
+        estimate = item.estimate
+        updated = item.updated
         
-        status = "in-progress" if status_char == "/" else "open"
-
-        # コメント部分 (<!-- ... -->) の抽出
-        m_comment = re.search(r"<!--\s*(.*?)\s*-->", rest)
-        comment_content = ""
-        if m_comment:
-            comment_content = m_comment.group(1)
-            title_part = rest[:m_comment.start()].strip()
-        else:
-            title_part = rest
-
-        # メタデータ抽出
-        priority = "none"
-        estimate = ""
-        updated = ""
         extra_lines = []
-
-        if comment_content:
-            m_p = re.search(r"priority:(\w+)", comment_content)
-            if m_p:
-                priority = m_p.group(1)
+        for b in item.blockedby:
+            dep = b if b.startswith("#") else f"#{b}"
+            extra_lines.append(f"- blockedby: {dep}")
+        for blocker in item.extra_blockers:
+            extra_lines.append(f"- {blocker}: info")
             
-            m_e = re.search(r"estimate:([^\s]+)", comment_content)
-            if m_e:
-                estimate = m_e.group(1)
-            
-            m_a = re.search(r"added:([\d\-]+)", comment_content)
-            if m_a:
-                updated = m_a.group(1)
-            
-            m_u = re.search(r"updated:([\d\-]+)", comment_content)
-            if m_u:
-                updated = m_u.group(1)
-            
-            m_b = re.search(r"blockedby:([^\s]+)", comment_content)
-            if m_b:
-                extra_lines.append(f"- blockedby: {m_b.group(1)}")
-
-            # 親タスクID の抽出
-            m_parent = re.search(r"parent:([^\s]+)", comment_content)
-
-            # 各種ブロッカーワードの透過的転送
-            for kw in ["仕様未確定", "要確認", "TBD", "spec?", "unclear", "not defined",
-                       "waiting", "review", "external", "vendor", "resource", "予算未確定"]:
-                if kw in comment_content:
-                    extra_lines.append(f"- {kw}: info")
-
-        # タイトルから [KEY-123] 形式のID抽出を試みる
-        m_id = re.match(r"^\[?([A-Z0-9\-]+)\]?\s*(.*)", title_part)
-        if m_id:
-            iid = m_id.group(1)
-            title = m_id.group(2).strip()
-        else:
-            iid = f"{project_key}-{task_index}"
-            title = title_part
-            task_index += 1
-
         # 擬似ブロックを再構築
-        block_text = f"## [{iid}] {title}\n"
+        block_text = f"## [{item.id}] {item.title}\n"
         block_text += f"- status: {status}\n"
         block_text += f"- priority-{priority}\n"
         if estimate:
@@ -211,16 +162,16 @@ def parse_tasks_file(text: str, project_key: str, project_name: str) -> tuple[li
         for extra in extra_lines:
             block_text += f"{extra}\n"
 
-        all_ids.append(iid)
-        hits = detect_blockers(iid, title, block_text)
+        all_ids.append(item.id)
+        hits = detect_blockers(item.id, item.title, block_text)
         if hits:
             for h in hits:
                 h["project"] = project_name
                 # 親タスクIDがあればバインド
-                if m_parent:
-                    h["parent"] = m_parent.group(1)
+                if item.parent:
+                    h["parent"] = item.parent
             blocked_all.extend(hits)
-            blocked_ids.add(iid)
+            blocked_ids.add(item.id)
 
     actionable = [i for i in all_ids if i not in blocked_ids]
     return blocked_all, actionable
