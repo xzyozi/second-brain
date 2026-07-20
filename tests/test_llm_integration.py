@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 """
 test_llm_integration.py - LLM（Ollama）の実呼び出しを伴う検証インテグレーションテスト
+
+基本的な動作確認テスト。シナリオベースの詳細検証は test_llm_scenarios.py を参照。
 """
 
 import pytest
-import shutil
 from tools.agent_client import AgentClient
 
 @pytest.mark.llm
-def test_pm_decomposition_format_with_llm():
+def test_pm_decomposition_format_with_llm(opencode_available):
     """PMエージェントを実際に呼び出してタスク分解結果をアサーションする"""
-    if not shutil.which("opencode"):
-        pytest.skip("Windowsホスト環境に 'opencode' コマンドが見つからないため、このテストをスキップします")
+    if not opencode_available:
+        pytest.skip("opencode が PATH に見つからないためスキップします")
         
     client = AgentClient()
     
@@ -45,15 +46,20 @@ def test_pm_decomposition_format_with_llm():
         pytest.fail(f"LLMエージェントの呼び出し中にエラーが発生しました: {e}")
 
 @pytest.mark.llm
-def test_executor_format_with_llm():
+def test_executor_format_with_llm(opencode_available):
     """executorエージェントを実際に呼び出して実装指示書のフォーマットをアサーションする"""
-    if not shutil.which("opencode"):
-        pytest.skip("Windowsホスト環境に 'opencode' コマンドが見つからないため、このテストをスキップします")
+    if not opencode_available:
+        pytest.skip("opencode が PATH に見つからないためスキップします")
         
     client = AgentClient()
     
+    # 実在タスク TFG-001 の情報をコンテキストとして渡す
     prompt = (
-        "projects/test_file_grep プロジェクトの TFG-1 タスクに対する実装指示書を作成してください。"
+        "以下のタスクに対する実装指示書を作成してください。\n\n"
+        "ID: TFG-001\n"
+        "タイトル: docx/xlsx/pptxの「テキスト構造抽出精度」検証のためのアプローチ確立\n"
+        "プロジェクト: test_file_grep\n\n"
+        "出力は必ず「## 実装指示書」セクションから始めてください。"
     )
     
     try:
@@ -68,16 +74,17 @@ def test_executor_format_with_llm():
         pytest.fail(f"LLMエージェントの呼び出し中にエラーが発生しました: {e}")
 
 @pytest.mark.llm
-def test_coder_format_with_llm():
+def test_coder_format_with_llm(opencode_available):
     """coderエージェントを実際に呼び出してコード生成とパース結果をアサーションする"""
-    if not shutil.which("opencode"):
-        pytest.skip("Windowsホスト環境に 'opencode' コマンドが見つからないため、このテストをスキップします")
+    if not opencode_available:
+        pytest.skip("opencode が PATH に見つからないためスキップします")
         
     client = AgentClient()
     
+    # # filepath: の強制指示なしで依頼し、より実環境に近い条件で確認する
     prompt = (
-        "tools/example.py に対して、文字列の長さを返す length(s) 関数を追加してください。 "
-        "出力コードブロックの先頭には必ず # filepath: tools/example.py を含めてください。"
+        "tools/example.py に対して、文字列の長さを返す length(s: str) -> int 関数を追加してください。 "
+        "コードブロックには実際のPythonコードのみを含めてください。"
     )
     
     try:
@@ -88,10 +95,11 @@ def test_coder_format_with_llm():
         assert "code_blocks" in response.parsed_data
         assert len(response.parsed_data["code_blocks"]) > 0
         
-        # generated_files のパースチェック
-        generated = response.parsed_data.get("generated_files", {})
-        assert "tools/example.py" in generated
-        assert "length" in generated["tools/example.py"]
+        # 生成コードに length 関数が含まれているか
+        all_code = "\n".join(response.parsed_data["code_blocks"])
+        assert "length" in all_code, (
+            f"生成コードに 'length' が含まれていません\ncode: {all_code[:300]}"
+        )
         
     except Exception as e:
         pytest.fail(f"LLMエージェントの呼び出し中にエラーが発生しました: {e}")

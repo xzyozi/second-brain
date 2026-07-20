@@ -109,3 +109,11 @@ def pytest_collection_modifyitems(config, items):
         if "llm" in item.keywords:
             item.add_marker(skip_llm)
 
+
+@pytest.fixture(scope="session")
+def opencode_available() -> bool:
+    """opencode コマンドが PATH 上に存在するかをセッション単位で確認するフィクスチャ"""
+    import shutil
+    return shutil.which("opencode") is not None
+
+

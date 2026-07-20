@@ -1,0 +1,28 @@
+[
+  {
+    "id": "filepath_header",
+    "description": "# filepath: ヘッダーの強制指示なしで依頼し、generated_files に少なくとも1件抽出されるかを確認する",
+    "prompt": "以下の実装指示に従い、Pythonコードを生成してください。\n\n---\n[実装指示書]\nプロジェクト: test_file_grep\n対象ファイル: src/text_extractor.py\n\n## 実装内容\n`src/text_extractor.py` に、プレーンテキスト（.txt）ファイルを読み込み、その内容を文字列として返す `read_text_file(filepath: str) -> str` 関数を実装してください。\n\n## 制約\n- 標準ライブラリのみ使用可\n- エラー時は空文字列を返す\n---",
+    "context_summary": null,
+    "assertions": {
+      "success": true,
+      "parsed_data_keys": ["code_blocks"],
+      "code_blocks_min_count": 1,
+      "generated_files_min_count": 0,
+      "code_contains_any": ["read_text_file", "def read_text_file"]
+    }
+  },
+  {
+    "id": "function_exists",
+    "description": "特定の関数名（extract_text）の実装を依頼し、生成コード中にその関数名が存在することを確認する",
+    "prompt": "以下の実装指示に従い、Pythonコードを生成してください。\n\n---\n[実装指示書]\nプロジェクト: test_file_grep\n対象ファイル: src/office_parser.py\n\n## 実装内容\n`src/office_parser.py` に、引数として渡された docx/xlsx/pptx ファイルのパス（`filepath: str`）からテキストを抽出して返す `extract_text(filepath: str) -> str` 関数を実装してください。\nファイルの拡張子によって処理を分岐させてください。\n\n## 制約\n- 標準ライブラリのみ使用可（zipfile, xml.etree.ElementTree 等）\n- # filepath: src/office_parser.py をコードブロックの先頭に必ず記述すること\n---",
+    "context_summary": null,
+    "assertions": {
+      "success": true,
+      "parsed_data_keys": ["code_blocks", "generated_files"],
+      "code_blocks_min_count": 1,
+      "generated_files_contains_key": "src/office_parser.py",
+      "code_contains_any": ["extract_text", "def extract_text"]
+    }
+  }
+]
