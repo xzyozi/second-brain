@@ -203,6 +203,8 @@ class IssueOrchestrator:
 
             # タスクの自動ステータス更新
             self._update_task_status_to_done(requirements)
+            # 検証サブタスク ({ID}-v) が存在する場合はそれも完了にする
+            self._update_verify_task_status(requirements)
 
             logger.info(f"[SUCCESS] Issue実行完了: {issue_id}")
             res = ExecutionResult(
@@ -254,6 +256,7 @@ class IssueOrchestrator:
             "issue_id": result.issue_id,
             "timestamp": datetime.now().isoformat(),
             "success": result.success,
+            "model": self._load_model_info(),
             "files_changed": result.files_changed,
             "test_result": test_info,
             "error_log": result.error_log
@@ -269,6 +272,21 @@ class IssueOrchestrator:
             logger.info(f"    ✓ 実行履歴を記録しました: {history_path.name}")
         except Exception as e:
             logger.warning(f"実行履歴の書き込みに失敗しました: {e}")
+
+    def _load_model_info(self) -> Dict[str, str]:
+        """各エージェントのモデル名を opencode.json から取得する"""
+        model_info = {"executor": "unknown", "coder": "unknown"}
+        opencode_path = self.root_dir / "opencode.json"
+        if opencode_path.exists():
+            try:
+                config = json.loads(opencode_path.read_text(encoding="utf-8"))
+                agents = config.get("agent", {})
+                for agent_name in ["executor", "coder"]:
+                    agent_cfg = agents.get(agent_name, {})
+                    model_info[agent_name] = agent_cfg.get("model", config.get("model", "unknown"))
+            except Exception as e:
+                logger.warning(f"モデル情報の取得に失敗しました: {e}")
+        return model_info
 
     def _update_task_status_to_done(self, requirements: Requirements):
         """タスクのステータスを tasks.md において [x]（完了）に更新する"""
@@ -311,6 +329,47 @@ class IssueOrchestrator:
                 
         except Exception as e:
             logger.error(f"  - tasks.md のステータス更新中にエラーが発生しました: {e}")
+
+    def _update_verify_task_status(self, requirements: Requirements):
+        """検証サブタスク ({issue_id}-v) が存在する場合、tasks.md から削除（消去）する"""
+        verify_id = f"{requirements.issue_id}-v"
+        logger.info(f"  - 検証サブタスクのクレンジング確認: {verify_id}")
+
+        target_tasks_md = None
+        p_tasks = requirements.project_path / "tasks.md"
+        if p_tasks.exists():
+            target_tasks_md = p_tasks
+        else:
+            root_tasks = self.root_dir / "tasks.md"
+            if root_tasks.exists():
+                target_tasks_md = root_tasks
+
+        if not target_tasks_md:
+            return
+
+        try:
+            content = target_tasks_md.read_text(encoding="utf-8")
+            lines = content.splitlines(keepends=True)
+
+            import re
+            pattern = re.compile(rf"^\s*-\s*\[[ /x]\]\s+\[?{re.escape(verify_id)}\]?")
+
+            target_idx = -1
+            for idx, line in enumerate(lines):
+                if pattern.search(line):
+                    target_idx = idx
+                    break
+
+            if target_idx != -1:
+                # 該当行を削除
+                lines.pop(target_idx)
+                target_tasks_md.write_text("".join(lines), encoding="utf-8")
+                logger.info(f"    ✓ 検証サブタスク {verify_id} を tasks.md から削除しました")
+            else:
+                logger.info(f"    - 検証サブタスク {verify_id} は存在しないためスキップしました")
+
+        except Exception as e:
+            logger.warning(f"  - 検証サブタスクの削除中にエラーが発生しました: {e}")
 
     def execute_batch(self, project: Optional[str] = None, max_retries: int = 2, dry_run: bool = False) -> bool:
         """
