@@ -18,6 +18,7 @@ class TaskItem:
     parent: Optional[str] = None
     blockedby: List[str] = field(default_factory=list)
     extra_blockers: List[str] = field(default_factory=list)
+    task_type: str = "normal"  # "normal" | "verify"
     raw_content: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
@@ -32,6 +33,7 @@ class TaskItem:
             "parent": self.parent,
             "blockedby": self.blockedby,
             "extra_blockers": self.extra_blockers,
+            "task_type": self.task_type,
         }
 
 def parse_comment_metadata(comment_content: str) -> Dict[str, Any]:
@@ -96,6 +98,7 @@ def parse_tasks_file(text: str, project_key: str, project_name: str) -> List[Tas
         blockedby = []
         parent = None
         extra_blockers = []
+        task_type = "normal"
 
         if comment_content:
             meta = parse_comment_metadata(comment_content)
@@ -104,6 +107,7 @@ def parse_tasks_file(text: str, project_key: str, project_name: str) -> List[Tas
             updated = meta.get("updated", meta.get("added", ""))
             blockedby = meta.get("blockedby", [])
             parent = meta.get("parent")
+            task_type = meta.get("type", "normal")
 
             # 各種ブロッカーワードの抽出
             for kw in ["仕様未確定", "要確認", "TBD", "spec?", "unclear", "not defined",
@@ -131,6 +135,7 @@ def parse_tasks_file(text: str, project_key: str, project_name: str) -> List[Tas
             parent=parent,
             blockedby=blockedby,
             extra_blockers=extra_blockers,
+            task_type=task_type,
             raw_content=line
         ))
 
