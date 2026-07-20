@@ -627,6 +627,34 @@ class TestExecuteBatch:
         assert record["files_changed"] == ["src/main.py"]
         assert record["test_result"]["total_tests"] == 10
 
+    def test_update_verify_task_status_deletion(self, tmp_path):
+        """検証サブタスク ({issue_id}-v) の自動削除（消去）テスト"""
+        tasks_md = tmp_path / "tasks.md"
+        tasks_md.write_text("""# タスクリスト
+- [ ] [TEST-001] タスクA  <!-- priority:high -->
+  - [ ] [TEST-001-v] TEST-001 の検証  <!-- priority:high parent:TEST-001 blockedby:#TEST-001 type:verify -->
+- [ ] [TEST-002] タスクB  <!-- priority:medium -->
+""", encoding="utf-8")
+
+        orchestrator = IssueOrchestrator(root_dir=tmp_path)
+        requirements = Requirements(
+            issue_id="TEST-001",
+            title="タスクA",
+            description="説明",
+            project_path=tmp_path,
+            related_files=[],
+            priority="high"
+        )
+
+        # 削除実行
+        orchestrator._update_verify_task_status(requirements)
+
+        # 結果確認
+        content = tasks_md.read_text(encoding="utf-8")
+        assert "TEST-001-v" not in content
+        assert "TEST-001" in content
+        assert "TEST-002" in content
+
 
 class TestExecutionResult:
     """ExecutionResultデータクラスのテスト"""
