@@ -58,7 +58,9 @@ def call_ollama_gemma4(prompt: str, model_name: str = None) -> str:
         with urllib.request.urlopen(req, timeout=90) as resp:
             if resp.status == 200:
                 result = json.loads(resp.read().decode("utf-8"))
-                return result.get("response", "").strip()
+                output_text = result.get("response", "") or result.get("content", "") or result.get("thinking", "")
+                output_text = output_text.strip()
+                return output_text if output_text else "分かりません"
     except Exception as e:
         logger.warning(f"Ollama API 呼出エラー ({model_name}): {e}")
     return "分かりません"
