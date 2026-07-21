@@ -197,6 +197,47 @@ class SimpleQAEvaluator:
             print()
 
 
+    def save_eval_history(self, summary: Dict[str, Any], model_name: str, output_path: Optional[Path] = None):
+        """評価結果ログを JSON ファイルに保存・追加記録する"""
+        from datetime import datetime
+
+        if output_path is None:
+            output_dir = Path("tools/.cache")
+            output_dir.mkdir(parents=True, exist_ok=True)
+            output_path = output_dir / "eval_history.json"
+        else:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        record = {
+            "timestamp": datetime.now().isoformat(),
+            "model": model_name,
+            "dataset": str(self.dataset_path),
+            "summary": {
+                "total": summary["total"],
+                "counts": summary["counts"],
+                "rates": summary["rates"]
+            },
+            "details": summary.get("details", [])
+        }
+
+        history = []
+        if output_path.exists():
+            try:
+                history = json.loads(output_path.read_text(encoding="utf-8"))
+                if not isinstance(history, list):
+                    history = [history]
+            except Exception:
+                history = []
+
+        history.append(record)
+
+        try:
+            output_path.write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8")
+            logger.info(f"✓ 評価ログを外部JSONファイルに保存しました: {output_path}")
+        except Exception as e:
+            logger.error(f"評価ログの保存に失敗しました: {e}")
+
+
 def main():
     default_model = get_default_model_from_config()
     parser = argparse.ArgumentParser(description="SimpleQA データセット評価スクリプト")
@@ -204,6 +245,8 @@ def main():
     parser.add_argument("--use-llm", action="store_true", default=False, help="実際の LLM (opencode.json 設定) を呼び出して評価する")
     parser.add_argument("--model", type=str, default=default_model, help=f"評価に使用するモデル名 (デフォルト: {default_model})")
     parser.add_argument("--agent", type=str, default="pm", help="評価対象のエージェント名 (pm/coder/executor等)")
+    parser.add_argument("--output-json", action="store_true", default=False, help="評価結果を外部JSONファイル(tools/.cache/eval_history.json)に保存する")
+    parser.add_argument("--output-path", type=str, default=None, help="評価結果JSONログの出力先カスタムパス")
     parser.add_argument("-v", "--verbose", action="store_true", default=False, help="問題ごとの評価詳細（質問・正解・生応答）を出力する")
     args = parser.parse_args()
 
@@ -211,6 +254,10 @@ def main():
     evaluator = SimpleQAEvaluator(dataset_path)
     summary = evaluator.run_eval(use_llm=args.use_llm, agent_name=args.agent, model_name=args.model)
     evaluator.print_report(summary, verbose=args.verbose)
+
+    if args.output_json or args.output_path:
+        out_p = Path(args.output_path) if args.output_path else None
+        evaluator.save_eval_history(summary, model_name=args.model, output_path=out_p)
 
 
 if __name__ == "__main__":
