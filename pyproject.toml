@@ -25,7 +25,8 @@ python_files = ["test_*.py"]
 pythonpath = ["."]
 addopts = "-v --tb=short"
 markers = [
-    "llm: LLMの実呼び出しを伴うインテグレーションテスト"
+    "llm: LLMの実呼び出しを伴うインテグレーションテスト",
+    "eval_simpleqa_real: SimpleQA実LLMベンチマークテスト"
 ]
 
 # --- Ruff (高速リンター・フォーマッター) 設定 ---

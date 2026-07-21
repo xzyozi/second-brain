@@ -99,15 +99,23 @@ def pytest_addoption(parser):
     parser.addoption(
         "--run-llm", action="store_true", default=False, help="LLMの呼び出しを伴うインテグレーションテストを実行する"
     )
+    parser.addoption(
+        "--eval-simpleqa", action="store_true", default=False, help="SimpleQA実LLMベンチマークテストを実行する"
+    )
 
 
 def pytest_collection_modifyitems(config, items):
-    if config.getoption("--run-llm"):
-        return
+    run_llm = config.getoption("--run-llm")
+    eval_simpleqa = config.getoption("--eval-simpleqa")
+
     skip_llm = pytest.mark.skip(reason="--run-llm オプションが指定されていないためスキップします")
+    skip_eval = pytest.mark.skip(reason="--eval-simpleqa オプションが指定されていないためスキップします")
+
     for item in items:
-        if "llm" in item.keywords:
+        if "llm" in item.keywords and not run_llm:
             item.add_marker(skip_llm)
+        if "eval_simpleqa_real" in item.keywords and not eval_simpleqa:
+            item.add_marker(skip_eval)
 
 
 @pytest.fixture(scope="session")
