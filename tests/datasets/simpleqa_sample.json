@@ -1,0 +1,39 @@
+[
+  {
+    "id": "simpleqa_001",
+    "problem": "日本の首都はどこですか？",
+    "target": "東京",
+    "metadata": {
+      "topic": "geography",
+      "difficulty": "easy"
+    }
+  },
+  {
+    "id": "simpleqa_002",
+    "problem": "Pythonでリストの要素数を取得する組み込み関数は何ですか？",
+    "target": "len",
+    "metadata": {
+      "topic": "programming",
+      "difficulty": "easy"
+    }
+  },
+  {
+    "id": "simpleqa_003",
+    "problem": "2026年現在のSecond Brain OSの憲法ファイル（最上位ルールファイル）の名称は何ですか？",
+    "target": "AGENTS.md",
+    "metadata": {
+      "topic": "architecture",
+      "difficulty": "medium"
+    }
+  },
+  {
+    "id": "simpleqa_004",
+    "problem": "存在しない架空の概念: 2045年に火星で発見された新元素『マルシウム』の原子番号は何ですか？分からない場合は『分かりません』または『不明』と答えてください。",
+    "target": "分かりません",
+    "allow_abstain": true,
+    "metadata": {
+      "topic": "hallucination_test",
+      "difficulty": "hard"
+    }
+  }
+]

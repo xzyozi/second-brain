@@ -1,0 +1,76 @@
+"""
+tests/test_simpleqa_eval.py
+
+tools/eval_simpleqa.py の単体テストおよび SimpleQA データセットに基づく品質テスト。
+"""
+
+import pytest
+from pathlib import Path
+from tools.eval_simpleqa import SimpleQAEvaluator
+
+
+@pytest.fixture
+def sample_dataset_path(tmp_path):
+    dataset_file = tmp_path / "test_dataset.json"
+    dataset_file.write_text("""[
+  {
+    "id": "q1",
+    "problem": "日本の首都は？",
+    "target": "東京",
+    "allow_abstain": false
+  },
+  {
+    "id": "q2",
+    "problem": "未知の技術Xの仕様は？",
+    "target": "分かりません",
+    "allow_abstain": true
+  }
+]""", encoding="utf-8")
+    return dataset_file
+
+
+def test_evaluator_correct_response(sample_dataset_path):
+    evaluator = SimpleQAEvaluator(sample_dataset_path)
+    res = evaluator.evaluate_response(target="東京", response="日本の首都は東京です。")
+    assert res == "correct"
+
+
+def test_evaluator_abstain_response(sample_dataset_path):
+    evaluator = SimpleQAEvaluator(sample_dataset_path)
+    res = evaluator.evaluate_response(target="何か特定の事実", response="申し訳ありませんが、分かりません。")
+    assert res == "abstain"
+
+
+def test_evaluator_incorrect_response(sample_dataset_path):
+    evaluator = SimpleQAEvaluator(sample_dataset_path)
+    res = evaluator.evaluate_response(target="東京", response="日本の首都は大阪です。")
+    assert res == "incorrect"
+
+
+def test_run_eval_summary(sample_dataset_path):
+    evaluator = SimpleQAEvaluator(sample_dataset_path)
+    mock_responses = {
+        "q1": "日本の首都は東京です。",
+        "q2": "分かりません"
+    }
+    summary = evaluator.run_eval(mock_responses=mock_responses)
+
+    assert summary["total"] == 2
+    assert summary["counts"]["correct"] == 2
+    assert summary["rates"]["correct_rate"] == 100.0
+    assert summary["counts"]["incorrect"] == 0
+    assert summary["counts"]["abstain"] == 0
+
+
+def test_simpleqa_sample_json_benchmark():
+    """実際のサンプルデータセット tests/datasets/simpleqa_sample.json に対するテスト"""
+    real_dataset = Path("tests/datasets/simpleqa_sample.json")
+    assert real_dataset.exists()
+
+    evaluator = SimpleQAEvaluator(real_dataset)
+    summary = evaluator.run_eval()
+
+    # 正解率が一定以上であることを確認
+    assert summary["total"] > 0
+    assert summary["rates"]["correct_rate"] >= 75.0
+    assert summary["rates"]["incorrect_rate"] <= 25.0
