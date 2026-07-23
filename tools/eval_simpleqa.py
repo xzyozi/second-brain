@@ -11,7 +11,7 @@ import argparse
 import urllib.request
 import urllib.error
 from pathlib import Path
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List, Tuple, Optional
 
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s: %(message)s")
 logger = logging.getLogger("eval_simpleqa")
@@ -41,8 +41,8 @@ def get_default_model_from_config(root_dir: Path = Path(".")) -> str:
     # フォールバック
     return "gemma4-12b-it-Q4_K_M:latest"
 
-def call_ollama_gemma4(prompt: str, model_name: str = None) -> str:
-    """Ollama API (http://localhost:11434/api/generate) を使用して推論を行う"""
+def call_ollama_gemma4(prompt: str, model_name: str = None) -> Tuple[str, str]:
+    """Ollama API (http://localhost:11434/api/generate) を使用して推論を行い、(最終回答, 内部思考/Reasoning) のタプルを返す"""
     if not model_name:
         model_name = get_default_model_from_config()
 
@@ -58,12 +58,30 @@ def call_ollama_gemma4(prompt: str, model_name: str = None) -> str:
         with urllib.request.urlopen(req, timeout=90) as resp:
             if resp.status == 200:
                 result = json.loads(resp.read().decode("utf-8"))
-                output_text = result.get("response", "") or result.get("content", "") or result.get("thinking", "")
-                output_text = output_text.strip()
-                return output_text if output_text else "分かりません"
+                raw_response = result.get("response", "") or result.get("content", "")
+                thinking = result.get("thinking", "")
+
+                # <think>...</think> タグが含まれている場合は分離
+                import re
+                think_match = re.search(r"<think>(.*?)</think>", raw_response, re.DOTALL)
+                if think_match:
+                    thinking = (thinking + "\n" + think_match.group(1)).strip()
+                    raw_response = re.sub(r"<think>.*?</think>", "", raw_response, flags=re.DOTALL).strip()
+                elif "</think>" in raw_response:
+                    parts = raw_response.split("</think>", 1)
+                    thinking = (thinking + "\n" + parts[0].replace("<think>", "")).strip()
+                    raw_response = parts[1].strip()
+
+                output_text = raw_response.strip()
+                if not output_text and thinking:
+                    # 思考プロセスのみで回答部分が空の場合のフォールバック
+                    output_text = thinking.splitlines()[-1].strip()
+
+                final_text = output_text if output_text else "分かりません"
+                return final_text, thinking
     except Exception as e:
         logger.warning(f"Ollama API 呼出エラー ({model_name}): {e}")
-    return "分かりません"
+    return "分かりません", ""
 
 class SimpleQAEvaluator:
     def __init__(self, dataset_path: Path):
@@ -130,9 +148,14 @@ class SimpleQAEvaluator:
                 prompt = f"以下の質問に簡潔かつ事実に基づき一言または1文で回答してください。\n質問: {problem}\n分からない場合は『分かりません』と回答してください。"
                 logger.info(f"[{idx}/{len(self.data)}] 推論実行中 ({item_id}): {problem}")
                 
-                response = ""
-                # 1. Ollama API による直接呼出を試行
-                response = call_ollama_gemma4(prompt, model_name=model_name)
+            response = ""
+            reasoning = ""
+            if use_llm:
+                prompt = f"以下の質問に簡潔かつ事実に基づき一言または1文で回答してください。\n質問: {problem}\n分からない場合は『分かりません』と回答してください。"
+                logger.info(f"[{idx}/{len(self.data)}] 推論実行中 ({item_id}): {problem}")
+                
+                # 1. Ollama API による直接呼出を試行 (最終回答と内部思考を分離)
+                response, reasoning = call_ollama_gemma4(prompt, model_name=model_name)
                 
                 # 2. 失敗した場合は AgentClient を試行
                 if response == "分かりません" and agent_client:
@@ -151,13 +174,17 @@ class SimpleQAEvaluator:
             status = self.evaluate_response(target, response, allow_abstain=allow_abstain, aliases=aliases)
             counts[status] += 1
 
-            results.append({
+            detail_item = {
                 "id": item_id,
                 "problem": problem,
                 "target": target,
                 "response": response,
                 "status": status
-            })
+            }
+            if reasoning:
+                detail_item["reasoning"] = reasoning
+
+            results.append(detail_item)
 
         total = len(self.data)
         summary = {
@@ -188,10 +215,15 @@ class SimpleQAEvaluator:
             print("----------------------------------------")
             for item in summary["details"]:
                 status_icon = "✓ [CORRECT]" if item["status"] == "correct" else ("? [ABSTAIN]" if item["status"] == "abstain" else "✗ [INCORRECT]")
-                print(f"\nID      : {item['id']} {status_icon}")
-                print(f"Question: {item['problem']}")
-                print(f"Target  : {item['target']}")
-                print(f"Response: {item['response']}")
+                print(f"\nID       : {item['id']} {status_icon}")
+                print(f"Question : {item['problem']}")
+                print(f"Target   : {item['target']}")
+                print(f"Response : {item['response']}")
+                if "reasoning" in item and item["reasoning"]:
+                    reasoning_snippet = item['reasoning'].replace('\n', ' ')
+                    if len(reasoning_snippet) > 120:
+                        reasoning_snippet = reasoning_snippet[:120] + "..."
+                    print(f"Reasoning: {reasoning_snippet}")
             print("----------------------------------------\n")
         else:
             print()
