@@ -9,7 +9,13 @@
       "parsed_data_keys": ["code_blocks"],
       "code_blocks_min_count": 1,
       "generated_files_min_count": 0,
-      "code_contains_any": ["read_text_file", "def read_text_file"]
+      "code_contains_any": ["read_text_file", "def read_text_file"],
+      "ccr_rules": [
+        "type_annotations",
+        "docstrings",
+        "no_bare_except"
+      ],
+      "min_ccr_score": 80.0
     }
   },
   {
@@ -22,7 +28,34 @@
       "parsed_data_keys": ["code_blocks", "generated_files"],
       "code_blocks_min_count": 1,
       "generated_files_contains_key": "src/office_parser.py",
-      "code_contains_any": ["extract_text", "def extract_text"]
+      "code_contains_any": ["extract_text", "def extract_text"],
+      "ccr_rules": [
+        "type_annotations",
+        "no_bare_except",
+        "no_mutable_defaults",
+        {"forbidden_imports": ["python-docx", "openpyxl", "pptx"]}
+      ],
+      "min_ccr_score": 90.0
+    }
+  },
+  {
+    "id": "ccr_robust_data_processor",
+    "description": "構文・安全性・ドメイン固有ルール（CCR: Constraint Compliance Rate）の検証シナリオ",
+    "prompt": "以下の要件に従い、設定ファイルを安全にマージ・ログ出力する Python コードを生成してください。\n\n---\n[実装指示書]\n対象ファイル: src/config_manager.py\n\n## 実装内容\n`merge_and_report_config(base: dict, update: dict) -> dict` 関数を実装してください。\n2つの辞書を安全にマージし、マージ後の件数を報告してください。\n\n## 制約・規約ルール（重要）\n1. すべての引数・返り値に型ヒントを記述すること\n2. 関数の Docstring を記述すること\n3. 裸の `except:` や `except Exception: pass` での例外握りつぶしは禁止\n4. 引数のデフォルト値に list や dict などの可変オブジェクトを使用しないこと\n5. パイプライン破壊を防ぐため `print()` は絶対に使用しないこと\n---",
+    "context_summary": null,
+    "assertions": {
+      "success": true,
+      "parsed_data_keys": ["code_blocks"],
+      "code_blocks_min_count": 1,
+      "ccr_rules": [
+        "type_annotations",
+        "docstrings",
+        "snake_case",
+        "no_bare_except",
+        "no_mutable_defaults",
+        "no_print"
+      ],
+      "min_ccr_score": 83.0
     }
   }
 ]
