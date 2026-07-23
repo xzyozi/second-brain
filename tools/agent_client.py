@@ -272,6 +272,9 @@ class AgentClient:
         # 改行コードの差異 (\r\n) を \n に正規化して改行一致エラーを防止
         normalized_output = raw_output.replace('\r\n', '\n')
 
+        # <think>...</think> タグが含まれている場合は除去
+        normalized_output = re.sub(r'<think>.*?</think>', '', normalized_output, flags=re.DOTALL)
+
         # ```python ... ```, ```py ... ```, またはプレーンな ``` ... ``` 形式を大文字小文字を区別せず抽出
         code_blocks = re.findall(
             r'```(?:py(?:thon)?)?\s*\n(.*?)\n```',

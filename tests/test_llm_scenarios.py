@@ -124,8 +124,17 @@ def _assert_scenario(scenario: dict, response, agent_name: str):
     # coder: CCR (Constraint Compliance Rate) 制約遵守率の自動評価
     if "ccr_rules" in a:
         blocks = response.parsed_data.get("code_blocks", [])
-        all_code = "\n".join(blocks)
+        all_code = "\n\n".join(blocks)
+        
+        # まず全体で試行し、SyntaxError の場合はブロック単体で試行
         validator = ConstraintComplianceValidator(all_code)
+        if not validator.tree and blocks:
+            for b in blocks:
+                v = ConstraintComplianceValidator(b)
+                if v.tree:
+                    validator = v
+                    break
+
         ccr_summary = validator.evaluate_rules(a["ccr_rules"])
         
         min_score = a.get("min_ccr_score", 80.0)
