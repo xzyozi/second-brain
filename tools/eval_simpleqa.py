@@ -144,10 +144,6 @@ class SimpleQAEvaluator:
             aliases = item.get("aliases", [])
             allow_abstain = item.get("allow_abstain", False)
 
-            if use_llm:
-                prompt = f"以下の質問に簡潔かつ事実に基づき一言または1文で回答してください。\n質問: {problem}\n分からない場合は『分かりません』と回答してください。"
-                logger.info(f"[{idx}/{len(self.data)}] 推論実行中 ({item_id}): {problem}")
-                
             response = ""
             reasoning = ""
             if use_llm:
