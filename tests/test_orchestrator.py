@@ -448,7 +448,7 @@ class TestIssueOrchestrator:
 
             assert result.success is False
             assert result.error_log is not None
-            assert "Test failed" in str(result.error_log) or "TestFailureError" in str(result.error_log)
+            assert any(term in str(result.error_log) for term in ["Test failed", "TestFailureError", "Self-Healing"])
 
     def test_merge_python_code(self, tmp_path):
         """ASTマージ機能のテスト"""

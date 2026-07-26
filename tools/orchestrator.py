@@ -20,11 +20,25 @@ from dataclasses import dataclass, asdict
 from datetime import datetime
 import argparse
 
+from enum import Enum, auto
+
 # プロジェクトのルートディレクトリをインポートパスに追加
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from tools.agent_client import AgentClient
 from tools.prompt_builder import PromptBuilder
+from tools.sanitizer import CodeSanitizer
+from tools.error_classifier import ErrorClassifier, ErrorCategory, ConstraintViolationError as CCRConstraintViolationError, TaskTestFailureError
+
+
+class State(Enum):
+    """オーケストレーターの状態遷移Enum"""
+    DRAFT = auto()
+    SANITIZED = auto()
+    L1_PASSED = auto()
+    L2_PASSED = auto()
+    L3_PASSED = auto()
+    FAILED = auto()
 
 # ログ設定
 logging.basicConfig(
@@ -174,10 +188,6 @@ class IssueOrchestrator:
             logger.info(f"[Phase 3] 実装指示書生成（Executor呼び出し）")
             impl_plan = self._generate_implementation_plan(requirements, constraints)
 
-            # Phase 4: コード生成
-            logger.info(f"[Phase 4] コード生成（Coder呼び出し）")
-            generated_code = self._generate_code(impl_plan, constraints)
-
             if dry_run:
                 logger.info("[DRY-RUN] ファイル書き込みとテスト実行をスキップ")
                 return ExecutionResult(
@@ -185,32 +195,117 @@ class IssueOrchestrator:
                     issue_id=issue_id,
                     context_data={"mode": "dry_run"},
                     error_log=None,
-                    files_changed=list(generated_code.files.keys()),
+                    files_changed=[f.as_posix() for f in impl_plan.files_to_create + impl_plan.files_to_edit],
                     test_result=None
                 )
 
-            # Phase 5: ファイル書き込み
-            logger.info(f"[Phase 5] ファイル書き込み")
-            write_result = self._write_files(requirements.project_path, generated_code)
+            # 調査・分析のみでファイル変更なしの場合
+            if not impl_plan.files_to_create and not impl_plan.files_to_edit:
+                logger.info("  - ファイル編集不要のタスクのため完了処理を行います。")
+                self._update_task_status_to_done(requirements)
+                self._update_verify_task_status(requirements)
+                return ExecutionResult(
+                    success=True,
+                    issue_id=issue_id,
+                    context_data={"mode": "no_files_changed"},
+                    error_log=None,
+                    files_changed=[],
+                    test_result=None
+                )
 
-            # Phase 6: テスト実行
-            logger.info(f"[Phase 6] テスト実行")
-            test_result = self._run_tests(requirements.project_path, write_result)
+            # =========================================================
+            # ステートマシン＆分類別自己修復 (Self-Healing) ループ
+            # =========================================================
+            max_retries_per_stage = {
+                "SYNTAX": 3,
+                "CONSTRAINT": 2,
+                "TEST_FAILURE": 2,
+                "RUNTIME": 1
+            }
 
-            # Phase 7: 成功判定
-            if not test_result.passed:
-                raise TestFailureError(test_result)
+            state = State.DRAFT
+            attempts_by_type: Dict[str, int] = {}
+            current_prompt = self.prompt_builder.build_coding_prompt(impl_plan, constraints)
+            generated_code = None
+            write_result = []
+            test_result = None
+            last_error = None
+
+            while state != State.L3_PASSED and state != State.FAILED:
+                try:
+                    if state == State.DRAFT:
+                        logger.info(f"[Phase 4] コード生成（Coder呼び出し） [State: DRAFT]")
+                        generated_code = self._generate_code(impl_plan, constraints)
+                        state = State.SANITIZED
+
+                    if state == State.SANITIZED:
+                        logger.info(f"[Phase 4.1] コードサニタイズ (Unicode記号変換等) [State: SANITIZED]")
+                        sanitized_files = {
+                            path: CodeSanitizer.sanitize(code_text)
+                            for path, code_text in generated_code.files.items()
+                        }
+                        generated_code.files = sanitized_files
+                        state = State.L1_PASSED
+
+                    if state == State.L1_PASSED:
+                        logger.info(f"[Phase 4.2] L1 構文検証 (ast.parse) [State: L1_PASSED]")
+                        import ast
+                        for filepath, code_text in generated_code.files.items():
+                            if filepath.endswith(".py"):
+                                try:
+                                    ast.parse(code_text, filename=filepath)
+                                except SyntaxError as se:
+                                    raise se
+                        state = State.L2_PASSED
+
+                    if state == State.L2_PASSED:
+                        logger.info(f"[Phase 5] ファイル書き込み [State: L2_PASSED]")
+                        write_result = self._write_files(requirements.project_path, generated_code)
+                        state = State.L3_PASSED
+
+                    if state == State.L3_PASSED:
+                        logger.info(f"[Phase 6] テスト実行 [State: L3_PASSED]")
+                        test_result = self._run_tests(requirements.project_path, write_result)
+                        if not test_result.passed:
+                            raise TaskTestFailureError(f"Tests failed:\n{test_result.error_log}", test_output=test_result.error_log)
+
+                except Exception as e:
+                    last_error = e
+                    err_cat = ErrorClassifier.classify(e)
+                    cat_name = err_cat.name
+                    attempts_by_type[cat_name] = attempts_by_type.get(cat_name, 0) + 1
+                    limit = max_retries_per_stage.get(cat_name, 2)
+
+                    logger.warning(
+                        f"  ⚠️ [HEALING] エラー検出 ({cat_name}, 試行 {attempts_by_type[cat_name]}/{limit}): {e}"
+                    )
+
+                    if attempts_by_type[cat_name] > limit:
+                        logger.error(
+                            f"  ❌ [HEALING] エラーカテゴリ '{cat_name}' のリトライ上限 ({limit}回) に到達しました。処理を中断します。"
+                        )
+                        state = State.FAILED
+                        break
+
+                    # エラー分類に応じた専用ヒーリングプロンプトを構築して DRAFT に戻す
+                    current_prompt = self._build_healing_prompt(current_prompt, "", e, err_cat)
+                    state = State.DRAFT
+
+            if state == State.FAILED:
+                raise Exception(f"Self-Healing に失敗しました (最終エラー: {last_error})")
 
             # タスクの自動ステータス更新
             self._update_task_status_to_done(requirements)
-            # 検証サブタスク ({ID}-v) が存在する場合はそれも完了にする
             self._update_verify_task_status(requirements)
 
             logger.info(f"[SUCCESS] Issue実行完了: {issue_id}")
             res = ExecutionResult(
                 success=True,
                 issue_id=issue_id,
-                context_data={"requirements": asdict(requirements)},
+                context_data={
+                    "requirements": asdict(requirements),
+                    "attempts_by_type": attempts_by_type
+                },
                 error_log=None,
                 files_changed=write_result,
                 test_result=test_result
@@ -762,6 +857,52 @@ class IssueOrchestrator:
             metadata={"stub": False}
         )
 
+    def _build_healing_prompt(
+        self,
+        base_prompt: str,
+        current_code: str,
+        error: Exception | str,
+        err_category: ErrorCategory
+    ) -> str:
+        """
+        エラー分類に応じた、ノイズの少ない専用ヒーリングプロンプトを構築する
+        """
+        snippet = ErrorClassifier.extract_error_snippet(error, err_category)
+
+        if err_category == ErrorCategory.SYNTAX:
+            healing_instruction = (
+                f"【修復依頼: 構文エラー (SyntaxError)】\n"
+                f"生成されたコードに以下の構文エラーが発生しました:\n"
+                f"```text\n{snippet}\n```\n\n"
+                f"カッコの閉じ忘れ、不完全な構文、不適切な文字を修正し、完全に動作する Python コードブロックを出力してください。"
+            )
+
+        elif err_category == ErrorCategory.CONSTRAINT:
+            healing_instruction = (
+                f"【修復依頼: 制約違反 (Constraint Violation)】\n"
+                f"生成されたコードが以下のプロジェクト規約・制約を満たしていません:\n"
+                f"{snippet}\n\n"
+                f"すべての制約条件を満たすようにコードを修正してください。"
+            )
+
+        elif err_category == ErrorCategory.TEST_FAILURE:
+            healing_instruction = (
+                f"【修復依頼: テスト失敗 (Test Failure)】\n"
+                f"生成されたコードに対して `pytest` を実行したところ、以下のエラーが発生しました:\n"
+                f"```text\n{snippet}\n```\n\n"
+                f"上記テストエラー・アサーション失敗の原因を分析し、すべてのテストが通過するように修正したコードを出力してください。"
+            )
+
+        else:
+            healing_instruction = (
+                f"【修復依頼: 実行時エラー (Runtime Error)】\n"
+                f"以下の実行時エラーが発生しました:\n{snippet}\n\n"
+                f"エラーの原因を解消するようにコードを修正してください。"
+            )
+
+        # ヒーリング指示をベースプロンプトに追加
+        return f"{base_prompt}\n\n---\n\n{healing_instruction}"
+
     def _merge_python_code(self, existing_code: str, new_code: str) -> str:
         """
         既存のPythonコードと新規生成されたPythonコードをマージする。
@@ -858,6 +999,9 @@ class IssueOrchestrator:
 
         written_files = []
         for filepath_str, content in generated_code.files.items():
+            # サニタイズ（Unicode記号の変換・不要マークダウンの除去）
+            content = CodeSanitizer.sanitize(content)
+
             filepath = Path(filepath_str)
             # パスが絶対パスでなく、かつ projects/プロジェクト名/ で始まっていない場合は project_path を結合する
             if not filepath.is_absolute():
