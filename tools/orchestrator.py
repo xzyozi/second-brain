@@ -235,7 +235,7 @@ class IssueOrchestrator:
                 try:
                     if state == State.DRAFT:
                         logger.info(f"[Phase 4] コード生成（Coder呼び出し） [State: DRAFT]")
-                        generated_code = self._generate_code(impl_plan, constraints)
+                        generated_code = self._generate_code(impl_plan, constraints, custom_prompt=current_prompt)
                         state = State.SANITIZED
 
                     if state == State.SANITIZED:
@@ -287,8 +287,13 @@ class IssueOrchestrator:
                         state = State.FAILED
                         break
 
+                    # 直前に生成されたコードテキストを抽出
+                    last_code_str = ""
+                    if generated_code and generated_code.files:
+                        last_code_str = "\n\n".join([f"# --- {path} ---\n{code}" for path, code in generated_code.files.items()])
+
                     # エラー分類に応じた専用ヒーリングプロンプトを構築して DRAFT に戻す
-                    current_prompt = self._build_healing_prompt(current_prompt, "", e, err_cat)
+                    current_prompt = self._build_healing_prompt(current_prompt, last_code_str, e, err_cat)
                     state = State.DRAFT
 
             if state == State.FAILED:
@@ -827,7 +832,8 @@ class IssueOrchestrator:
     def _generate_code(
         self, 
         impl_plan: ImplementationPlan,
-        constraints: Constraints
+        constraints: Constraints,
+        custom_prompt: Optional[str] = None
     ) -> GeneratedCode:
         """CoderエージェントLLMを呼び出してコード生成"""
         # 調査や分析のみでファイル変更がない場合、Coder呼び出しをスキップして早期リターン
@@ -837,9 +843,12 @@ class IssueOrchestrator:
 
         logger.info(f"  - Coderエージェント呼び出し")
 
-        prompt = self.prompt_builder.build_coding_prompt(
-            impl_plan, constraints
-        )
+        if custom_prompt:
+            prompt = custom_prompt
+        else:
+            prompt = self.prompt_builder.build_coding_prompt(
+                impl_plan, constraints
+            )
         logger.debug(f"==================== [DEBUG] Coder 送信プロンプト ====================\n{prompt}\n======================================================================")
 
         response = self.agent_client.call_agent("coder", prompt)
@@ -868,10 +877,12 @@ class IssueOrchestrator:
         エラー分類に応じた、ノイズの少ない専用ヒーリングプロンプトを構築する
         """
         snippet = ErrorClassifier.extract_error_snippet(error, err_category)
+        code_context = f"【あなたが直前に生成した不完全なコード】\n{current_code}\n\n" if current_code else ""
 
         if err_category == ErrorCategory.SYNTAX:
             healing_instruction = (
                 f"【修復依頼: 構文エラー (SyntaxError)】\n"
+                f"{code_context}"
                 f"生成されたコードに以下の構文エラーが発生しました:\n"
                 f"```text\n{snippet}\n```\n\n"
                 f"カッコの閉じ忘れ、不完全な構文、不適切な文字を修正し、完全に動作する Python コードブロックを出力してください。"
@@ -880,6 +891,7 @@ class IssueOrchestrator:
         elif err_category == ErrorCategory.CONSTRAINT:
             healing_instruction = (
                 f"【修復依頼: 制約違反 (Constraint Violation)】\n"
+                f"{code_context}"
                 f"生成されたコードが以下のプロジェクト規約・制約を満たしていません:\n"
                 f"{snippet}\n\n"
                 f"すべての制約条件を満たすようにコードを修正してください。"
@@ -888,6 +900,7 @@ class IssueOrchestrator:
         elif err_category == ErrorCategory.TEST_FAILURE:
             healing_instruction = (
                 f"【修復依頼: テスト失敗 (Test Failure)】\n"
+                f"{code_context}"
                 f"生成されたコードに対して `pytest` を実行したところ、以下のエラーが発生しました:\n"
                 f"```text\n{snippet}\n```\n\n"
                 f"上記テストエラー・アサーション失敗の原因を分析し、すべてのテストが通過するように修正したコードを出力してください。"
@@ -896,6 +909,7 @@ class IssueOrchestrator:
         else:
             healing_instruction = (
                 f"【修復依頼: 実行時エラー (Runtime Error)】\n"
+                f"{code_context}"
                 f"以下の実行時エラーが発生しました:\n{snippet}\n\n"
                 f"エラーの原因を解消するようにコードを修正してください。"
             )
