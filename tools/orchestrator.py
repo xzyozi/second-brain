@@ -894,7 +894,11 @@ class IssueOrchestrator:
                 f"{code_context}"
                 f"生成されたコードに以下の構文エラーが発生しました:\n"
                 f"```text\n{snippet}\n```\n\n"
-                f"カッコの閉じ忘れ、不完全な構文、不適切な文字を修正し、完全に動作する Python コードブロックを出力してください。"
+                f"以下の点を重点的にチェックして修正し、完全に動作する Python コードを出力してください:\n"
+                f"1. カッコ `()`, `[]`, `{{}}` の開閉対応が一致しているか\n"
+                f"2. 三項演算子 `x if condition else y` の `else` 節が漏れていないか\n"
+                f"3. 10進数数値リテラルの先頭に `0` が付いていないか (例: `01` -> `1`)\n"
+                f"4. 関数宣言や if 文の末尾のコロン `:` の忘れがないか"
             )
 
         elif err_category == ErrorCategory.CONSTRAINT:

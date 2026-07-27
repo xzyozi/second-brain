@@ -56,4 +56,7 @@ class CodeSanitizer:
         # 3. 裸の単一識別子行（例: 行全体が `json` や `sys` のみ）を削除
         sanitized = re.sub(r"^\s*(?:json|sys|os|re|ast|pathlib)\s*$", "", sanitized, flags=re.MULTILINE)
 
+        # 4. 数値リテラルの先頭ゼロ (01, 02 ➔ 1, 2) の自動修正 (文字列内部は除外)
+        sanitized = re.sub(r"(?<=[\s\[\(,:=])0([1-9][0-9]*)\b", r"\1", sanitized)
+
         return sanitized.strip()

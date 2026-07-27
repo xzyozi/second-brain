@@ -27,3 +27,10 @@ def test_sanitize_markdown_code_block():
     assert sanitized.startswith("def hello():")
     assert sanitized.endswith("print('hi')")
     assert "```" not in sanitized
+
+
+def test_sanitize_leading_zeros():
+    code_with_zeros = "vals = [01, 02, 010]\nversion = '01'"
+    sanitized = CodeSanitizer.sanitize(code_with_zeros)
+    assert "vals = [1, 2, 10]" in sanitized
+    assert "version = '01'" in sanitized
