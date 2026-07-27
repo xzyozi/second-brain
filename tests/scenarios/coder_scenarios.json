@@ -1,28 +1,61 @@
 [
   {
     "id": "filepath_header",
-    "description": "# filepath: ヘッダーの強制指示なしで依頼し、generated_files に少なくとも1件抽出されるかを確認する",
-    "prompt": "以下の実装指示に従い、Pythonコードを生成してください。\n\n---\n[実装指示書]\nプロジェクト: test_file_grep\n対象ファイル: src/text_extractor.py\n\n## 実装内容\n`src/text_extractor.py` に、プレーンテキスト（.txt）ファイルを読み込み、その内容を文字列として返す `read_text_file(filepath: str) -> str` 関数を実装してください。\n\n## 制約\n- 標準ライブラリのみ使用可\n- エラー時は空文字列を返す\n---",
+    "description": "指定された関数名（read_text_file）のPythonコードブロック出力を検証する",
+    "prompt": "以下の実装指示に従い、Pythonコードブロックを1つ生成してください。\n\n---\n[実装指示書]\nプロジェクト: test_file_grep\n対象ファイル: src/text_extractor.py\n\n## 実装内容\n`src/text_extractor.py` に、プレーンテキスト（.txt）ファイルを読み込み、その内容を文字列として返す `read_text_file(filepath: str) -> str` 関数を実装してください。\n\n## 制約・ルール\n- 必ず `def read_text_file(filepath: str) -> str:` 関数を定義すること\n- 標準ライブラリのみ使用可（openpyxl や requests 等のサードパーティライブラリは使用禁止）\n- エラー時は空文字列 `\"\"` を返すこと\n- 関数には型ヒントと Docstring を記述すること\n---",
     "context_summary": null,
     "assertions": {
       "success": true,
       "parsed_data_keys": ["code_blocks"],
       "code_blocks_min_count": 1,
       "generated_files_min_count": 0,
-      "code_contains_any": ["read_text_file", "def read_text_file"]
+      "code_contains_any": ["read_text_file", "def read_text_file"],
+      "ccr_rules": [
+        "type_annotations",
+        "docstrings",
+        "no_bare_except"
+      ],
+      "min_ccr_score": 80.0
     }
   },
   {
     "id": "function_exists",
-    "description": "特定の関数名（extract_text）の実装を依頼し、生成コード中にその関数名が存在することを確認する",
-    "prompt": "以下の実装指示に従い、Pythonコードを生成してください。\n\n---\n[実装指示書]\nプロジェクト: test_file_grep\n対象ファイル: src/office_parser.py\n\n## 実装内容\n`src/office_parser.py` に、引数として渡された docx/xlsx/pptx ファイルのパス（`filepath: str`）からテキストを抽出して返す `extract_text(filepath: str) -> str` 関数を実装してください。\nファイルの拡張子によって処理を分岐させてください。\n\n## 制約\n- 標準ライブラリのみ使用可（zipfile, xml.etree.ElementTree 等）\n- # filepath: src/office_parser.py をコードブロックの先頭に必ず記述すること\n---",
+    "description": "ヘッダーコメントと特定の関数名（extract_text）を含む完全なPythonコードを生成する",
+    "prompt": "以下の実装指示に従い、Pythonコードブロックを1つ生成してください。\n\n---\n[実装指示書]\nプロジェクト: test_file_grep\n対象ファイル: src/office_parser.py\n\n## 実装内容\n`src/office_parser.py` に、引数として渡された docx/xlsx/pptx ファイルのパス（`filepath: str`）からテキストを抽出して返す `extract_text(filepath: str) -> str` 関数を実装してください。\n\n## 制約・ルール\n- コードブロックの先頭行に `# filepath: src/office_parser.py` とコメントを記述すること\n- 必ず `def extract_text(filepath: str) -> str:` 関数を定義すること\n- 標準ライブラリのみ使用可（zipfile, xml.etree.ElementTree 等を使用し、python-docx, openpyxl, pptx 等は絶対に使用しないこと）\n- 型ヒントを付与し、裸の `except:` は使用しないこと\n---",
     "context_summary": null,
     "assertions": {
       "success": true,
       "parsed_data_keys": ["code_blocks", "generated_files"],
       "code_blocks_min_count": 1,
       "generated_files_contains_key": "src/office_parser.py",
-      "code_contains_any": ["extract_text", "def extract_text"]
+      "code_contains_any": ["extract_text", "def extract_text"],
+      "ccr_rules": [
+        "type_annotations",
+        "no_bare_except",
+        "no_mutable_defaults",
+        {"forbidden_imports": ["python-docx", "openpyxl", "pptx"]}
+      ],
+      "min_ccr_score": 80.0
+    }
+  },
+  {
+    "id": "ccr_robust_data_processor",
+    "description": "構文・安全性・ドメイン固有ルール（CCR: Constraint Compliance Rate）の検証シナリオ",
+    "prompt": "以下の要件に従い、設定ファイルを安全にマージ・ログ出力する Python コードを生成してください。\n\n---\n[実装指示書]\n対象ファイル: src/config_manager.py\n\n## 実装内容\n`merge_and_report_config(base: dict, update: dict) -> dict` 関数を実装してください。\n2つの辞書を安全にマージし、マージ後の件数を報告してください。\n\n## 制約・規約ルール（重要）\n1. すべての引数・返り値に型ヒントを記述すること\n2. 関数の Docstring を記述すること\n3. 裸の `except:` や `except Exception: pass` での例外握りつぶしは禁止\n4. 引数のデフォルト値に list や dict などの可変オブジェクトを使用しないこと\n5. パイプライン破壊を防ぐため `print()` は絶対に使用しないこと\n---",
+    "context_summary": null,
+    "assertions": {
+      "success": true,
+      "parsed_data_keys": ["code_blocks"],
+      "code_blocks_min_count": 1,
+      "ccr_rules": [
+        "type_annotations",
+        "docstrings",
+        "snake_case",
+        "no_bare_except",
+        "no_mutable_defaults",
+        "no_print"
+      ],
+      "min_ccr_score": 83.0
     }
   }
 ]

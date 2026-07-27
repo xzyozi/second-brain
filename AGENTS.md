@@ -57,9 +57,9 @@ OpenCode が全セッションで常時読み込む、最小限の絶対ルー�
 | **pm** | 壁打ち・要件整理・README構造化 | Gemma4 12B | `new-project-intake` |
 | **orchestrator** | 優先度スコア読取・実行計画提示 | Gemma4 12B | `priority-scoring` |
 | **executor** | 承認済みIssueの1件実行 | Gemma4 12B | `execute-issue` |
-| **coder** | 実装・コード生成・レビュー | Gemma4 12B | `code-implementation` |
+| **coder** | 実装・コード生成・レビュー | gemma-4-py_coder | `code-implementation` |
 
-* ※ すべてのモデルは `ollama/gemma4-12b-it-Q4_K_M:latest` を使用する。
+* ※ 基本モデルは `ollama/gemma4-12b-it-Q4_K_M:latest` を使用（coder エージェントのみ `ollama/gemma-4-py_coder` を使用）。
 
 ---
 
