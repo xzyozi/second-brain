@@ -1039,11 +1039,13 @@ class IssueOrchestrator:
                 try:
                     existing_content = filepath.read_text(encoding="utf-8")
                     existing_content = CodeSanitizer.sanitize(existing_content)
+                    import ast
+                    ast.parse(existing_content)
                     merged_content = self._merge_python_code(existing_content, content)
                     content = merged_content
                     logger.info(f"    - Merged with existing AST structure for {filepath.name}")
                 except Exception as e:
-                    logger.warning(f"    - AST merge failed for {filepath.name}, fallback to overwrite: {e}")
+                    logger.warning(f"    - AST merge skipped for {filepath.name} due to syntax issue in existing file, fallback to clean write: {e}")
 
             filepath.write_text(content, encoding="utf-8", newline="\n")
             written_files.append(str(filepath))

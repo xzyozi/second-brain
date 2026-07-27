@@ -53,4 +53,7 @@ class CodeSanitizer:
             if char in sanitized:
                 sanitized = sanitized.replace(char, replacement)
 
+        # 3. 裸の単一識別子行（例: 行全体が `json` や `sys` のみ）を削除
+        sanitized = re.sub(r"^\s*(?:json|sys|os|re|ast|pathlib)\s*$", "", sanitized, flags=re.MULTILINE)
+
         return sanitized.strip()
