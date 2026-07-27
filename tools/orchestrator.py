@@ -877,7 +877,16 @@ class IssueOrchestrator:
         エラー分類に応じた、ノイズの少ない専用ヒーリングプロンプトを構築する
         """
         snippet = ErrorClassifier.extract_error_snippet(error, err_category)
-        code_context = f"【あなたが直前に生成した不完全なコード】\n{current_code}\n\n" if current_code else ""
+        
+        if current_code:
+            lines = current_code.splitlines()
+            if len(lines) > 40:
+                short_code = "\n".join(lines[-40:])
+                code_context = f"【直前に生成された不完全なコード（末尾抜粋）】\n```python\n... (前略)\n{short_code}\n```\n\n"
+            else:
+                code_context = f"【直前に生成された不完全なコード】\n```python\n{current_code}\n```\n\n"
+        else:
+            code_context = ""
 
         if err_category == ErrorCategory.SYNTAX:
             healing_instruction = (
@@ -1029,6 +1038,7 @@ class IssueOrchestrator:
             if filepath.exists() and filepath.suffix == ".py":
                 try:
                     existing_content = filepath.read_text(encoding="utf-8")
+                    existing_content = CodeSanitizer.sanitize(existing_content)
                     merged_content = self._merge_python_code(existing_content, content)
                     content = merged_content
                     logger.info(f"    - Merged with existing AST structure for {filepath.name}")
