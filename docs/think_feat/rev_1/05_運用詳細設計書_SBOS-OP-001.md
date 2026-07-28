@@ -4,10 +4,11 @@
 | 項目 | 内容 |
 | :--- | :--- |
 | 文書番号 | SBOS-OP-001 |
-| 版数 | Rev.3.1 |
+| 版数     | Rev.3.3 |
+| 改訂日   | 2026年7月28日（D1〜D5 バグ修正）|
 | 作成日 | 2026年7月27日 |
 | 対象読者 | 運用エンジニア / プロジェクトリード / DevOpsエンジニア |
-| 関連文書 | SBOS-BD-002（基本設計書）、SBOS-ENV-001（環境構築仕様書） |
+| 関連文書 | SBOS-BD-002（基本設計書）、SBOS-ENV-001（環境構築仕様書）、SBOS-PM-005（矛盾点一覧） |
 
 ---
 
@@ -21,13 +22,14 @@
 #### crontab 設定例
 ```bash
 # m h  dom mon dow   command
-0 7 * * * cd ~/second-brain && /home/user/.local/bin/uv run python tools/score-issues.py && /home/user/.local/bin/uv run python tools/check-blockers.py > ~/second-brain/tools/.cache/daily_batch.log 2>&1
+# [D2修正] notify.py に --event daily_summary 引数を追加
+0 7 * * * cd ~/second-brain && /home/user/.local/bin/uv run python tools/score-issues.py && /home/user/.local/bin/uv run python tools/check-blockers.py && /home/user/.local/bin/uv run python tools/notify.py --event daily_summary > ~/second-brain/tools/.cache/daily_batch.log 2>&1
 ```
 
 #### スコアリング計算数式と判定根拠 (`score-issues.py`)
 全 Issue に対し、以下の4軸数式を適用して 0〜100点 のスコアを算出する。
-$$	ext{Total} = (P 	imes 3.0) + (F 	imes 2.0) + (E 	imes 1.5) + (D 	imes 2.0)$$
-$$	ext{Score} = rac{	ext{Total}}{42.5} 	imes 100$$
+$$\text{Total} = (P \times 3.0) + (F \times 2.0) + (E \times 1.5) + (D \times 2.0)$$
+$$\text{Score} = \frac{\text{Total}}{42.5} \times 100$$
 - **優先度 ($P$, 1〜5):** `critical`/`urgent`=5, `high`=4, `medium`=3, `low`=2, `none`=1
 - **鮮度 ($F$, 0〜5):** 最終更新または追加日 (`added:`) から 7日以内=5, 30日以内=3, 90日以内=1, 超=0
 - **工数軽さ ($E$, 1〜5):** サブタスク粒度および推定工数：1h=5, 4h=4, 8h=3, 16h=2, それ以上=1
@@ -57,7 +59,7 @@ $$	ext{Score} = rac{	ext{Total}}{42.5} 	imes 100$$
    - ③ Coder によるコード生成 ＆ AST マージ
    - ④ Ruff / pytest による自動検証（失敗時は自動自己修復）
    - ⑤ Reviewer Agent による差分監査（指示書とdiffの突き合わせ）
-   - ⑥ すべて通過後、変更ファイルを Git ステージしてユーザーに承認を要求。
+   - ⑥ すべて通過後、`execution_history.json` に実行結果を記録し、`tasks.md` のステータスを `[x]` に更新して完了。（注: `orchestrator.py` は git 操作を行わない。コミットは運用者が手動で実施すること。）
 
 ---
 
@@ -81,14 +83,22 @@ $$	ext{Score} = rac{	ext{Total}}{42.5} 	imes 100$$
 #### Step 1: レビュー履歴と差分ログの確認
 ```bash
 # 1. 該当 Issue のレビュー監査ログを表示
+# [D3修正] chr(39)式を廃止。辞書アクセスを変数に事前代入しf-string内のクォートネストを完全に回避
 python -c '
 import json
 with open("tools/.cache/execution_history.json", "r") as f:
-    logs = [json.loads(line) for line in f if "EC-012" in line]
-latest = logs[-1]
-for r in latest["review"]["rounds"]:
-    print(f"--- Round {r["round"]} ({r["verdict"]}) ---")
-    print(r["comment"])
+    data = json.load(f)
+logs = [e for e in data["executions"] if "EC-012" in e.get("issue_id", "")]
+if not logs:
+    print("該当 Issue の履歴が見つかりません")
+else:
+    latest = logs[-1]
+    for r in latest.get("review", {}).get("rounds", []):
+        rn = r.get("round", "?")
+        rv = r.get("verdict", "?")
+        rc = r.get("comment", "")
+        print("--- Round " + str(rn) + " (" + rv + ") ---")
+        print(rc)
 '
 ```
 **確認のポイント:** レビュアーの指摘が「実装上のバグ・例外処理漏れ」なのか、そもそも「Executor が作成した指示書（仕様）の矛盾・無理筋な要求」なのかを見極める。
@@ -110,8 +120,8 @@ uv run pytest
 # 修正前 (B7でブロック中)
 - [/] [EC-012] 決済バグ修正  <!-- priority:high round:3 max_round:3 -->
 
-# 修正後 (roundを1に戻し、チェックボックスを進行中に維持)
-- [/] [EC-012] 決済バグ修正  <!-- priority:high round:1 max_round:3 -->
+# [C5修正] round:0 にリセットする（1巡目からやり直し）
+- [/] [EC-012] 決済バグ修正  <!-- priority:high round:0 max_round:3 -->
 ```
 ```bash
 # 母艦からオーケストレーターを再トリガー
@@ -125,19 +135,23 @@ python tools/orchestrator.py execute --issue-id EC-012
 ## 3. 監査ログ管理と品質トレーサビリティ
 
 ### 3.1 監査ログ (`execution_history.json`) の集計と品質分析
-`tools/.cache/execution_history.json` は NDJSON (Newline Delimited JSON) として記録され、プロジェクト全体の品質統計を可視化するための貴重なデータソースとなる。
+`tools/.cache/execution_history.json` は **単一JSONオブジェクト形式**（`{"executions": [...]}` ）として記録される。プロジェクト全体の品質統計を可視化するための貴重なデータソースとなる。
 
 ```bash
 # 過去のテスト通過率とレビュー差し戻し平均回数を集計するワンライナー
+# [C3修正] json.load() で単一JSONとして読み込む
+# [C6修正] "total_rounds" フィールドは存在しないため len(rounds) で算出する
 python -c '
-import json, glob
+import json
 with open("tools/.cache/execution_history.json") as f:
-    records = [json.loads(line) for line in f]
+    data = json.load(f)
+records = data.get("executions", [])
 total = len(records)
-success_cnt = sum(1 for r in records if r["success"])
-avg_rounds = sum(r["review"]["total_rounds"] for r in records if "review" in r) / total if total else 0
-print(f"=== 品質監査サマリー ===")
-print(f"総実行数: {total}件 | 最終成功率: {success_cnt/total*100:.1f}%")
+success_cnt = sum(1 for r in records if r.get("success"))
+round_counts = [len(r["review"]["rounds"]) for r in records if "review" in r and "rounds" in r["review"]]
+avg_rounds = sum(round_counts) / len(round_counts) if round_counts else 0
+print("=== 品質監査サマリー ===")
+print(f"総実行数: {total}件 | 最終成功率: {success_cnt/total*100:.1f}%" if total else "実行履歴なし")
 print(f"平均レビューラウンド数: {avg_rounds:.2f}回")
 '
 ```
@@ -162,12 +176,20 @@ python tools/record-failure.py   --agent "coder"   --issue "EC-018"   --error "O
   1. Ollama のコンテキスト窓（`num_ctx`）が枯渇し、モデルが出力を途中で打ち切っている。
   2. モデルが JSON フォーマットの要求を無視し、前後に解説文や挨拶を混入させている。
 - **対処・解消手順:**
+
+  **Linux / macOS:**
   ```bash
-  # 1. コンテキストのクリアと中間キャッシュの削除
-  python -c "from tools.context_manager import SharedContext; SharedContext.clear_all_caches()"
+  # 1. 中間キャッシュの削除
+  # [D4修正] context_*.json は実在しないファイル名。実在するキャッシュを削除する
+  rm -f tools/.cache/priority-cache.json tools/.cache/blocked.json
 
   # 2. agent_client.py 内のパース正規表現の緩和確認
   # または対象 Issue のタスク記述を分割して短くする
+  ```
+
+  **Windows (PowerShell):**
+  ```powershell
+  Remove-Item tools\.cache\priority-cache.json, tools\.cache\blocked.json -ErrorAction SilentlyContinue
   ```
 
 ### ケース2: テスト継続失敗 (`TestFailureError` / 上限到達)
@@ -190,7 +212,8 @@ python tools/record-failure.py   --agent "coder"   --issue "EC-018"   --error "O
   nvidia-smi  # または htop / asitop
 
   # 2. agent_client.py のデフォルトタイムアウトを延長
-  # AgentClient(default_timeout=600) へ一時調整するか、軽量モデル(7B)へフォールバック
+  # [C8修正] コンストラクタ引数名は default_timeout ではなく timeout
+  # AgentClient(timeout=600) へ一時調整するか、軽量モデル(7B)へフォールバック
   ```
 
 ### ケース4: AST マージの衝突および構文エラー検知 (`SyntaxError during merge`)
@@ -199,7 +222,31 @@ python tools/record-failure.py   --agent "coder"   --issue "EC-018"   --error "O
   - Coder が出力した Python コードが、不完全なインデントや未閉じの文字列リテラルを含んでいる。
 - **対処・解消手順:**
   - `orchestrator.py` は自動的に書き込み前のオリジナルスナップショット（`existing_content`）へロールバックし、リポジトリの破壊を防ぐように設計されている。
-  - エラーログを確認し、モデルの温度パラメータ（temperature）を下げて再実行するか、またはプロンプト指示書の曖昧な記述を明確化する。---
+  - エラーログを確認し、モデルの温度パラメータ（temperature）を下げて再実行するか、またはプロンプト指示書の曖昧な記述を明確化する。
+
+### ケース5: レビュー差し戻し上限到達（B7ブロッカー）⭐NEW
+- **症状:** `REVIEW_REJECTED` が `max_round`（デフォルト3）回繰り返し、Issue が `State.FAILED` に遷移する。翌朝のバッチで `blocked.json` に `B7` として記録される。
+- **根本原因:**
+  1. Coder への修正依頼だけでは解決しない根本的な要件定義の矛盾・曖昧さが存在する。
+  2. Reviewer モデルの応答品質が不安定で、正当な実装に対しても `changes_requested` を返し続けている。
+- **対処・解消手順:**
+  ```bash
+  # 1. 対象 Issue の全レビュー履歴を確認
+  python -c "
+  import json
+  data = json.load(open('tools/.cache/execution_history.json'))
+  for e in data['executions']:
+      if e['issue_id'] == 'EC-012':
+          print(json.dumps(e.get('review', {}), ensure_ascii=False, indent=2))
+  "
+  ```
+  - 指摘内容が**実装上のバグ・例外処理漏れ**なら → 衛星プロジェクトを直接エディタで開き手動修正後、`round` をリセットして再実行する。
+  - 指摘内容が**実装指示書（仕様）自体の矛盾・無理筋な要求**なら → `tasks.md` のIssue説明文を人間が直接修正してから、`round` をリセットして再実行する。
+  ```markdown
+  # 修正後（round を手動リセット）
+  - [/] [EC-012] 決済バグ修正  <!-- priority:high round:0 max_round:3 -->
+  ```
+  > **設計上の注意：** `round` のリセットは意図的に自動化しない。B7 は「人間の判断を挟むための安全弁」であり、機械的なリセット自動化は本設計の目的（判断ミスによるリポジトリ破壊防止）に反する。
 
 ## 5. 定常自動化スクリプト群の完全ソースコードリファレンス
 
@@ -266,7 +313,14 @@ def calculate_score(issue: Dict[str, Any]) -> float:
     e_val = 3.0
     
     # 4. 依存解決度スコア (D: 0〜5, 重み 2.0)
-    d_val = 0.0 if issue["blockedby"] else 5.0
+    # [C11修正] ブロッカー数に応じた段階評価（§1.1の定義表と一致させる）
+    blockedby = issue.get("blockedby")
+    if not blockedby:
+        d_val = 5.0
+    else:
+        # blockedby は "#ID1,#ID2" 形式を想定
+        blocker_count = len(str(blockedby).split(","))
+        d_val = 3.0 if blocker_count == 1 else (1.0 if blocker_count == 2 else 0.0)
     
     total = (p_val * 3.0) + (f_val * 2.0) + (e_val * 1.5) + (d_val * 2.0)
     return round((total / 42.5) * 100, 1)
@@ -314,16 +368,15 @@ if __name__ == "__main__":
 
 ```bash
 # 1. opencode.json のモデル指定を安定版 (例: qwen2.5-coder:7b-16k) へ戻す
-git checkout ~/.second-brain/.opencode/opencode.json
+# [C9修正] 正しいパスは ~/second-brain/opencode.json
+git checkout ~/second-brain/opencode.json
 
 # 2. Ollama サーバー上の不安定な新モデルのタグを削除
 ollama rm <unstable-new-model-tag>
 
-# 3. 失敗したタスクの状態リセット
-python -c '
-from tools.context_manager import SharedContext
-SharedContext.clear_all_caches()
-'
+# 3. 失敗したタスクのキャッシュリセット
+# [D4修正] context_*.json は実在しないファイル名。実在するキャッシュを削除する
+rm -f tools/.cache/priority-cache.json tools/.cache/blocked.json
 ```
 
 ---
@@ -340,16 +393,18 @@ set -e
 BACKUP_DIR="/mnt/backup/second-brain-$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$BACKUP_DIR"
 
-print "=== Starting Backup of Second Brain OS ==="
+# [C10修正] print は Python 構文。bash では echo を使用する
+echo "=== Starting Backup of Second Brain OS ==="
 # 1. 母艦のコミット済みツリーのアーカイブ
 tar --exclude="tools/.cache" --exclude=".venv" -czf "$BACKUP_DIR/second-brain-root.tar.gz" -C ~/ second-brain
 
 # 2. 各衛星プロジェクトの個別アーカイブ
 for proj in ~/second-brain/projects/*/; do
-    if [ -d "$proj/.git" ]; in
+    # [C10修正] "; in" は bash 構文エラー。正しくは "; then"
+    if [ -d "$proj/.git" ]; then
         proj_name=$(basename "$proj")
         tar --exclude=".venv" --exclude="node_modules" --exclude="__pycache__" -czf "$BACKUP_DIR/proj-${proj_name}.tar.gz" -C ~/second-brain/projects "$proj_name"
     fi
 done
-print "=== Backup Completed Successfully: $BACKUP_DIR ==="
+echo "=== Backup Completed Successfully: $BACKUP_DIR ==="
 ```
