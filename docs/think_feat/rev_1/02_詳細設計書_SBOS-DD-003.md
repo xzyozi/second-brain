@@ -4,7 +4,7 @@
 | 項目     | 内容                                                           |
 | :------- | :--------------------------------------------------------------- |
 | 文書番号 | SBOS-DD-003                                                      |
-| 版数     | Rev.4.1（Aiderフラグ修復・動的B7エスカレーション・リトライ上限回路統合版） |
+| 版数     | Rev.4.2（ルーティング純粋関数化・lint/testノードに副作用移動版） |
 | 改訂日   | 2026年7月28日                                                     |
 | 作成日   | 2026年7月28日                                                     |
 | 関連文書 | SBOS-BD-002（基本設計書 Rev.4.1）、SBOS-MULTI-001 Rev.2.1、SBOS-OP-001 Rev.3.3（※旧自前実装向け。新アーキテクチャ移行に伴い大半が改訂対象）、SBOS-OSS-001/002 |
@@ -121,6 +121,59 @@ def get_git_diff(project_path: Path) -> str:
 ## 4. LangGraph グラフ構築と条件分岐ロジック (リトライ回路統合)
 
 ```python
+def lint_node(state: OrchestratorState) -> OrchestratorState:
+    """Ruffを実行し、JSON形式の指摘一覧を取得する。失敗時はノード内でlint_roundをインクリメントする。"""
+    import subprocess, json
+    result = subprocess.run(
+        ["ruff", "check", "--output-format=json", "."],
+        cwd=state["project_path"], capture_output=True, text=True,
+    )
+    issues = json.loads(result.stdout) if result.stdout.strip() else []
+    passed = len(issues) == 0
+    if not passed:
+        # [2.1修正] インクリメントはノード内で行い、ルーティング関数を副作用ゼロに保つ
+        state["lint_round"] = state.get("lint_round", 0) + 1
+    state["lint_result"] = {"passed": passed, "issues": issues}
+    return state
+
+def test_node(state: OrchestratorState) -> OrchestratorState:
+    """pytestを実行し、JSON形式のレポートを取得する。失敗時はノード内でtest_roundをインクリメントする。"""
+    import subprocess, json
+    report_path = Path(state["project_path"]) / ".pytest_report.json"
+    subprocess.run(
+        ["pytest", "--json-report", f"--json-report-file={report_path}"],
+        cwd=state["project_path"], capture_output=True, text=True,
+    )
+    if report_path.exists():
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+        passed = report.get("exitcode", 1) == 0
+        log = json.dumps(report.get("tests", []))
+    else:
+        passed = False
+        log = "pytestレポートが生成されませんでした"
+    if not passed:
+        # [2.1修正] インクリメントはノード内で行い、ルーティング関数を副作用ゼロに保つ
+        state["test_round"] = state.get("test_round", 0) + 1
+    state["test_result"] = {"passed": passed, "log": log}
+    return state
+
+def review_node(state: OrchestratorState) -> OrchestratorState:
+    """レビューLLMを呼び出し、結果をrdjsonでReviewdogへパイプする。"""
+    from tools.llm_client import call_llm
+    from tools.aider_runner import get_git_diff
+    diff = get_git_diff(Path(state["project_path"]))
+    system_prompt = load_template("reviewer")
+    user_prompt = f"## 実装指示書\n{state['impl_plan']}\n\n## 差分\n```diff\n{diff}\n```\n\n出力はJSON形式のみ: {{\"verdict\": \"LGTM または changes_requested\", \"comments\": [...]}}"
+    result = call_llm("reviewer", system_prompt, user_prompt, expect_json=True)
+    verdict = result.get("verdict", "changes_requested")
+    state["review_verdict"] = verdict
+    state["review_comments"] = result.get("comments", [])
+    if verdict != "LGTM":
+        # [2.1修正] review_roundのインクリメントもノード内で処理
+        state["round"] = state.get("round", 0) + 1
+    _pipe_to_reviewdog(state["project_path"], state["review_comments"])
+    return state
+
 def build_graph():
     g = StateGraph(OrchestratorState)
     g.add_node("plan", plan_node)
@@ -135,36 +188,25 @@ def build_graph():
     g.add_edge("plan", "code")
     g.add_edge("code", "lint")
 
-    # [F3修正] lint 失敗時のループ制御（上限超過で escalate）
+    # [2.1修正] ルーティング関数は純粋関数（読み取り専用）。インクリメントはノード側で実施済み
     def route_after_lint(s: OrchestratorState) -> str:
         if s["lint_result"]["passed"]:
             return "test"
-        s["lint_round"] += 1
-        if s["lint_round"] >= s["max_round"]:
-            return "escalate"
-        return "code"
+        return "escalate" if s.get("lint_round", 0) >= s["max_round"] else "code"
 
     g.add_conditional_edges("lint", route_after_lint, {"test": "test", "code": "code", "escalate": "escalate"})
 
-    # [F3修正] test 失敗時のループ制御（上限超過で escalate）
     def route_after_test(s: OrchestratorState) -> str:
         if s["test_result"]["passed"]:
             return "review"
-        s["test_round"] += 1
-        if s["test_round"] >= s["max_round"]:
-            return "escalate"
-        return "code"
+        return "escalate" if s.get("test_round", 0) >= s["max_round"] else "code"
 
     g.add_conditional_edges("test", route_after_test, {"review": "review", "code": "code", "escalate": "escalate"})
 
-    # review 失敗時のループ制御
     def route_after_review(s: OrchestratorState) -> str:
-        s["round"] += 1
         if s["review_verdict"] == "LGTM":
             return "done"
-        if s["round"] >= s["max_round"]:
-            return "escalate"
-        return "code"
+        return "escalate" if s.get("round", 0) >= s["max_round"] else "code"
 
     g.add_conditional_edges("review", route_after_review, {"done": "done", "escalate": "escalate", "code": "code"})
     g.add_edge("done", END)
@@ -190,6 +232,7 @@ def escalate_node(state: OrchestratorState) -> OrchestratorState:
 
 ## 5. テスト・検証設計
 
-1. **`test_orchestrator_graph.py`**: LangGraph の各ノード（`plan` → `code` → `lint` → `test` → `review` → `done`/`escalate`）の状態遷移経路および `lint_round`/`test_round` 超過時の `escalate` 経路テスト。
-2. **`test_llm_client.py`**: LiteLLM 呼び出しおよび壊れた JSON レスポンス時の安全フォールバックテスト。
-3. **`test_aider_runner.py`**: `--no-auto-commits` （複数形）が常に付加されること、タイムアウト時に `AiderRunError` を送出することの検証。
+1. **`test_orchestrator_graph.py`**: LangGraph の各状態遷移経路（`done`/`escalate`）テスト。`lint_round`/`test_round` 超過時の `escalate` 経路テストを含む。
+2. **`test_orchestrator_graph.py` ルーティング純粋関数テスト**: ルーティング関数 `route_after_lint`, `route_after_test`, `route_after_review` を複数回連続で呼び出しても State のカウンタが二重インクリメントされないことを検証。
+3. **`test_llm_client.py`**: LiteLLM 呼び出しおよび壊れた JSON レスポンス時の安全フォールバックテスト。
+4. **`test_aider_runner.py`**: `--no-auto-commits` （複数形）が常に付加されること、タイムアウト時に `AiderRunError` を送出することの検証。

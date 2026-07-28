@@ -309,8 +309,25 @@ def calculate_score(issue: Dict[str, Any]) -> float:
     except ValueError:
         f_val = 2
         
-    # 3. 工数軽さスコア (E: 3に固定仮定, 重み 1.5)
-    e_val = 3.0
+    # 3. 工数軽さスコア (E: 1〜5, 重み 1.5)
+    # [2.2修正] estimate:Xh メタデータから動的にパース。
+    # 取得できない場合のデフォルト値は 3.0（旧固定値との後方互換性維持）。
+    # estimate → E マッピング: 1h=5, 4h=4, 8h=3, 16h=2, それ以上=1
+    _estimate_map = {"1h": 5, "2h": 5, "4h": 4, "8h": 3, "16h": 2}
+    _raw_estimate = str(issue.get("estimate", "")).strip().lower()
+    if _raw_estimate in _estimate_map:
+        e_val = float(_estimate_map[_raw_estimate])
+    elif _raw_estimate:
+        # 数値のみ抽出 (例: "3h", "6h") してバケット分類
+        import re as _re
+        _m = _re.match(r"^(\d+)h?$", _raw_estimate)
+        if _m:
+            _hours = int(_m.group(1))
+            e_val = 5.0 if _hours <= 2 else (4.0 if _hours <= 4 else (3.0 if _hours <= 8 else (2.0 if _hours <= 16 else 1.0)))
+        else:
+            e_val = 3.0  # 不明な形式はフォールバック
+    else:
+        e_val = 3.0  # estimate 未指定はフォールバック
     
     # 4. 依存解決度スコア (D: 0〜5, 重み 2.0)
     # [C11修正] ブロッカー数に応じた段階評価（§1.1の定義表と一致させる）
