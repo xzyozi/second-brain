@@ -1,13 +1,14 @@
 # 環境構築仕様書（システム前提要件・マルチモデル配置・セットアップガイド）
-**ローカルLLM × OpenCode × Python Orchestrator フルスタック構築仕様**
+**ローカルLLM × LangGraph × LiteLLM × Aider × Reviewdog フルスタック構築仕様**
 
 | 項目 | 内容 |
 | :--- | :--- |
 | 文書番号 | SBOS-ENV-001 |
-| 版数 | Rev.3.1 |
+| 版数 | Rev.4.2（新OSSスタック全面対応・Windows Nativeセットアップ統合版） |
+| 改訂日 | 2026年7月28日 |
 | 作成日 | 2026年7月27日 |
 | 対象読者 | インフラエンジニア / システム管理者 / 開発環境構築担当エンジニア |
-| 関連文書 | SBOS-BD-002（基本設計書）、SBOS-OP-001（運用詳細設計書） |
+| 関連文書 | SBOS-BD-002（基本設計書 Rev.4.1）、SBOS-DD-003（詳細設計書 Rev.4.2）、SBOS-OP-001（運用詳細設計書 Rev.3.4） |
 
 ---
 
@@ -20,21 +21,22 @@
 
 | パターン | システム構成・GPUスペック | 稼働可能なモデル構成 | 想定パフォーマンス |
 | :--- | :--- | :--- | :--- |
-| **推奨環境** | **NVIDIA RTX 4090 (24GB VRAM)**<br>または Apple M3/M4 Max (64GB RAM) | • Reviewer: `qwen3:32b` (Q4_K_M)<br>• Executor: `qwen2.5-coder:14b`<br>• Coder/PM: `qwen2.5-coder:7b-16k` | 32BモデルをVRAMに常駐させつつ、7B/14Bモデルの即時ロードが可能。最高速の応答性と品質を実現。 |
-| **標準環境** | **NVIDIA RTX 4080 / 3090 (16GB VRAM)**<br>または Apple M2/M3 Pro (32GB RAM) | • Reviewer/Executor: `qwen2.5-coder:14b`<br>• Coder/PM: `qwen2.5-coder:7b-16k` | 14Bモデルを最上位設計・監査として利用。全タスクの実用的で安定した自律処理が可能。 |
-| **最小要件** | **NVIDIA RTX 3060 / 4060 (8GB〜12GB VRAM)**<br>または Apple M1/M2 (16GB RAM) | • 全エージェント共通: `qwen2.5-coder:7b-16k` (または 7b-instruct) | 7Bモデル単体による運用。高度なレビューや複雑な要件定義ではリトライ回数が増加する可能性あり。 |
+| **推奨環境** | **NVIDIA RTX 4090 (24GB VRAM)**<br>または Apple M3/M4 Max (64GB RAM) | • Reviewer: `qwen3:32b` (Q4_K_M)<br>• Planner: `qwen2.5-coder:14b`<br>• Coder/Aider: `qwen2.5-coder:7b-16k` | 32BモデルをVRAMに常駐させつつ、7B/14Bモデルの即時ロードが可能。最高速の応答性と品質を実現。 |
+| **標準環境** | **NVIDIA RTX 4080 / 3090 (16GB VRAM)**<br>または Apple M2/M3 Pro (32GB RAM) | • Reviewer/Planner: `qwen2.5-coder:14b`<br>• Coder/Aider: `qwen2.5-coder:7b-16k` | 14Bモデルを最上位設計・監査として利用。全タスクの実用的で安定した自律処理が可能。 |
+| **最小要件** | **NVIDIA RTX 3060 / 4060 (8GB〜12GB VRAM)**<br>または Apple M1/M2 (16GB RAM) | • 全エージェント共通: `qwen2.5-coder:7b-16k` | 7Bモデル単体による運用。高度なレビューや複雑な要件定義ではリトライ回数が増加する可能性あり。 |
 
 ### 1.2 必須ソフトウェアおよびミドルウェア
-- **OS:** Linux (Ubuntu 22.04 LTS+ / Debian 12+), macOS (Sonoma 14+), または Windows 11 (WSL2 Ubuntu 22.04 推奨)
+- **OS:** Linux (Ubuntu 22.04 LTS+ / Debian 12+), macOS (Sonoma 14+), または Windows 11 (Windows Native / WSL2 両対応)
 - **Python:** Version 3.10 以上 (推奨: Python 3.11 または 3.12)
 - **パッケージマネージャー:** `uv` (Astral製 - 依存関係の確定的かつ高速な解決のために必須)
 - **Git:** Version 2.30 以上
 - **Ollama:** Version 0.3.0 以上 (OpenAI 互換 REST API `/v1` エンドポイントが `localhost:11434` で有効化されていること)
-- **OpenCode CLI:** 最新安定版 (ターミナルおよびサブプロセスからの呼び出しに対応していること)
+- **Aider CLI:** `aider-chat` (Gitワーキングツリー差分編集用エンジン)
+- **Reviewdog:** CLI (rdjson 差分行アノテーション表示用エンジン)
 
 ---
 
-## 2. マルチモデル配置戦略と OpenCode 完全設定仕様
+## 2. マルチモデル配置戦略と LiteLLM / Aider 設定仕様
 
 ### 2.1 役割別推奨オープンウェイトモデル
 Ollama にダウンロードし、各エージェントの責務に合わせて配備するモデル名と選択根拠を規定する。
@@ -46,69 +48,29 @@ ollama pull qwen2.5-coder:14b
 ollama pull qwen3:32b  # VRAM 20GB以上が確保できる場合
 ```
 
-- **`qwen2.5-coder:7b-16k` (実装・対話用):**
-  16,384トークンの拡張コンテキスト窓を持ち、構文エラーのないコードブロック出力と高速な応答（約40-60 token/sec）に特化。Coder および Sisyphus/PM に配備。
-- **`qwen2.5-coder:14b` (設計用):**
-  複雑なディレクトリ構造の把握、アルゴリズムの選択、および正確なマークダウン指示書の生成において7Bモデルを圧倒する精度を誇る。Executor に配備。
+- **`qwen2.5-coder:7b-16k` (コード編集・対話用):**
+  16,384トークンの拡張コンテキスト窓を持ち、Aider による差分編集と高速な応答（約40-60 token/sec）に特化。Coder / Aider および Sisyphus/PM に配備。
+- **`qwen2.5-coder:14b` (設計・計画用):**
+  複雑なディレクトリ構造の把握、アルゴリズムの選択、および正確なマークダウン指示書の生成において7Bモデルを圧倒する精度を誇る。Planner (plan_node) に配備。
 - **`qwen3:32b` (監査・レビュー用):**
-  優れた自然言語論理推論力とエッジケース検知能力を持つ。コードを書かせるのではなく、仕様書と diff の整合性を批判的に監査する Reviewer に配備。
+  優れた自然言語論理推論力とエッジケース検知能力を持つ。コードを書かせるのではなく、仕様書と diff の整合性を批判的に監査する Reviewer (review_node) に配備。
 
 ---
 
-### 2.2 `.opencode/opencode.json` 完全コンフィグレーション定義
-母艦リポジトリの `.opencode/opencode.json` に配置すべき完全な JSON 設定を以下に示す。この設定により、Python Orchestrator からのモデル呼出情報の取得（`_load_model_info`）、二重安全装置の Permission、ルール自動注入が実現される。
+### 2.2 LiteLLM および Aider モデル割り当て構成
 
-```json
-{
-  "$schema": "https://opencode.ai/config.json",
-  "provider": {
-    "ollama": {
-      "npm": "@ai-sdk/openai-compatible",
-      "name": "Ollama (local)",
-      "options": {
-        "baseURL": "http://localhost:11434/v1"
-      },
-      "models": {
-        "qwen2.5-coder:7b-16k": { "tools": true },
-        "qwen2.5-coder:14b": { "tools": true },
-        "qwen3:32b": { "tools": true }
-      }
-    }
-  },
-  "model": "ollama/qwen2.5-coder:7b-16k",
-  "default_agent": "sisyphus",
-  "agent": {
-    "executor": {
-      "model": "ollama/qwen2.5-coder:14b",
-      "description": "要件と制約から詳細な実装指示書を生成する設計エージェント"
-    },
-    "coder": {
-      "model": "ollama/qwen2.5-coder:7b-16k",
-      "description": "実装指示書に従い正確なソースコードを生成する実装エージェント"
-    },
-    "reviewer": {
-      "model": "ollama/qwen3:32b",
-      "description": "差分と仕様を照合しセキュリティと仕様整合性を監査するレビュアー"
-    }
-  },
-  "permission": {
-    "edit": "ask",
-    "bash": {
-      "*": "ask",
-      "python3 tools/*.py*": "allow",
-      "uv run python tools/*.py*": "allow",
-      "git commit*": "ask",
-      "git push*": "ask",
-      "rm -rf *": "deny",
-      "sudo *": "deny"
-    }
-  },
-  "instructions": [
-    "AGENTS.md"
-  ]
+OpenCode CLI および `.opencode/opencode.json` は廃止され、`tools/llm_client.py` (LiteLLM) および `tools/aider_runner.py` (Aider) により直接 Ollama API へ接続する。
+
+```python
+# tools/llm_client.py におけるモデル割り当て設定 (MODEL_MAP)
+MODEL_MAP = {
+    "planner": "ollama/qwen2.5-coder:14b",
+    "reviewer": "ollama/qwen3:32b",
+    "coder": "ollama/qwen2.5-coder:7b-16k",
 }
 ```
 
+Aider 実行時は環境変数 `OLLAMA_API_BASE=http://localhost:11434` を設定し、`--no-auto-commits` (複数形) フラグを付加して非破壊的なワーキングツリー差分適用を行う。
 
 ---
 
@@ -122,11 +84,7 @@ ollama pull qwen3:32b  # VRAM 20GB以上が確保できる場合
 curl -LsSf https://astral.sh/uv/install.sh | sh
 source ~/.bashrc  # または ~/.zshrc
 
-# 2. OpenCode CLI のインストール (npm 経由の例)
-npm install -g @opencode-ai/cli
-opencode --version
-
-# 3. Ollama サーバーの確認
+# 2. Ollama サーバーの稼働確認
 curl -s http://localhost:11434/api/version
 ```
 
@@ -137,8 +95,8 @@ mkdir -p ~/second-brain
 cd ~/second-brain
 git init
 
-# 2. 決定論的ツールおよびキャッシュ用フォルダ構成の作成
-mkdir -p tools/.cache projects .opencode/agents .opencode/commands
+# 2. ツール・テンプレートおよびキャッシュ用フォルダ構成の作成
+mkdir -p tools/.cache tools/templates projects
 
 # 3. 母艦側 .gitignore の作成（衛星プロジェクト完全遮断ルールの適用）
 cat << 'EOF' > .gitignore
@@ -160,18 +118,24 @@ git add .gitignore projects/.project-registry.json
 git commit -m "chore: initialize second-brain OS base structure"
 ```
 
-### Step 3: Python 決定論的検証・実行環境（venv・linter）の構築
-`tools/` 配下のスクリプト群が使用する Python 仮想環境および静的解析ツールをセットアップする。
+### Step 3: Python 仮想環境・新OSSスタックおよび Reviewdog の構築
 
 ```bash
 cd ~/second-brain
 
-# uv による Python 仮想環境の初期化と必須ライブラリの導入
+# 1. uv による Python 仮想環境の初期化と新OSSスタックの導入
 uv venv
-source .venv/bin/activate
-uv pip install ruff pytest pytest-cov pypdf openpyxl ruff-lsp
+source .venv/bin/activate  # Windows (PowerShell) の場合: .venv\Scripts\Activate.ps1
+uv pip install langgraph litellm aider-chat ruff pytest pytest-json-report
 
-# ruff 設定ファイル (pyproject.toml または ruff.toml) の配置
+# 2. Reviewdog のインストール
+# Linux / macOS の場合:
+curl -sfL https://raw.githubusercontent.com/reviewdog/reviewdog/master/install.sh | sh -s -- -b ~/.local/bin
+# Windows Native の場合 (PowerShell):
+# GitHub Releases から reviewdog.exe をダウンロードして PATH が通った場所へ配置
+reviewdog -version
+
+# 3. ruff 設定ファイル (ruff.toml) の配置
 cat << 'EOF' > ruff.toml
 line-length = 100
 target-version = "py310"
@@ -182,174 +146,85 @@ ignore = ["E501"]
 EOF
 ```
 
-### Step 4: エージェントテンプレートおよびコマンドの配置
+### Step 4: プロンプトテンプレートの配置確認
 ```bash
 # プロンプトテンプレートの配置確認
-ls -l .opencode/agents/
-# -> pm.md, executor.md, coder.md, reviewer.md が存在することを確認
-
-# スラッシュコマンドの配置確認
-ls -l .opencode/commands/
-# -> orchestrate.md, work.md, new-proj.md が存在することを確認
+ls -l tools/templates/
+# -> planner.md, coder.md, reviewer.md が存在することを確認
 ```
 
 ---
 
-## 4. 動作検証スクリプトと診断診断コマンド
+## 4. 動作検証スクリプトと診断コマンド
 
 構築完了後、環境全体が正常に機能しているかを検証するための診断テストを実行する。
 
 ### 4.1 モジュールインポートおよび単体スクリプト健全性テスト
-以下のコマンドを実行し、すべての Python スクリプトがエラーなくロードされ、Ollama API や設定ファイルを正しく参照できることを確認する。
-
 ```bash
 cd ~/second-brain
 source .venv/bin/activate
 
-# 1. コンポーネントインポートテスト
-python -c "from tools.orchestrator import IssueOrchestrator, State; print('✓ orchestrator.py loaded successfully')"
-python -c "from tools.agent_client import AgentClient; client = AgentClient(); print('✓ agent_client.py initialized')"
-python -c "from tools.context_manager import SharedContext; print('✓ context_manager.py loaded')"
-python -c "from tools.prompt_builder import PromptBuilder; print('✓ prompt_builder.py loaded')"
+# 1. LangGraph / LiteLLM / Aider コンポーネントインポートテスト
+python -c "import langgraph; import litellm; print('✓ LangGraph & LiteLLM loaded successfully')"
+python -c "from tools.llm_client import call_llm; print('✓ llm_client.py initialized')"
+python -c "from tools.aider_runner import run_aider; print('✓ aider_runner.py loaded')"
 
 # 2. スコアリングとブロッカー検知スクリプトのドライラン
-python tools/score-issues.py --dry-run
-python tools/check-blockers.py --dry-run
-```
-
-### 4.2 衛星環境および Orchestrator 統合動作テスト (ドライラン)
-テスト用のダミー衛星プロジェクトを作成し、オーケストレーターがエージェント連携を決定論的に制御できるかを検証する。
-
-```bash
-# 1. テスト衛星プロジェクトの作成
-mkdir -p projects/test-app/src projects/test-app/tests
-cd projects/test-app
-git init
-cat << 'EOF' > project.json
-{
-  "name": "動作検証アプリ",
-  "key": "TST",
-  "created_at": "2026-07-27",
-  "default_branch": "main",
-  "test_command": "pytest",
-  "lint_command": "ruff check ."
-}
-EOF
-
-cat << 'EOF' > tasks.md
-## 未着手
-- [ ] [TST-001] 四則演算ユーティリティモジュールの実装  <!-- priority:high added:2026-07-27 round:1 max_round:3 -->
-EOF
-cd ~/second-brain
-
-# 2. 台帳インデックスへの登録
-python -c '
-import json
-with open("projects/.project-registry.json", "r") as f: d = json.load(f)
-d["TST"] = "projects/test-app"
-with open("projects/.project-registry.json", "w") as f: json.dump(d, f, indent=2)
-'
-
-# 3. オーケストレーターによるドライラン実行
-python tools/orchestrator.py execute --issue-id TST-001 --dry-run
-
-# 結果検証確認項目:
-# [x] TST-001 が認識されたこと
-# [x] projects/test-app へCWDがスイッチされたこと
-# [x] エージェント executor -> coder -> reviewer の呼び出しパラメータが正常に構築されたこと
-```---
-
-## 5. Windows WSL2 固有の最適化および GPU パススルーチューニング
-
-Windows 11 上の WSL2 (Windows Subsystem for Linux 2) 環境で本スタックを構築する場合、ディスクI/Oパフォーマンスと GPU VRAM 割り当てにおいて、以下の固有チューニングが必須となる。
-
-### 5.1 ディスク I/O パフォーマンスの最大化（クロスOSアクセス禁止）
-Windows の NTFS ドライブ（`/mnt/c/Users/...` 等）に母艦（`~/second-brain/`）および衛星プロジェクトを配置して WSL2 からアクセスすると、9P プロトコルのオーバーヘッドによりファイル I/O 速度が通常の **5倍〜10倍遅延** する。これは Git の操作や `pytest`, `ruff` の実行速度に致命的な影響を与える。
-
-**必須ルール:** リポジトリと開発環境は、必ず WSL2 内部の Linux 仮想ディスク（ext4 ファイルシステム上、例: `/home/<username>/second-brain`）に配置すること。
-
-### 5.2 `.wslconfig` によるメモリおよび CPU リソース割り当て最適化
-ローカルLLM（特に 14B〜32B クラス）が VRAM から溢れてシステム RAM のスワップメモリに落ちた際、Windows 側のメモリ管理と競合して OOM (Out of Memory) クラッシュを引き起こすことを防ぐため、Windows ユーザーフォルダ直下（`C:\Users\<username>\.wslconfig`）に以下のリソース制限を明示する。
-
-```ini
-[wsl2]
-# システム物理メモリの約75%〜80%をWSLに割り当て（64GB RAM搭載マシンの例）
-memory=48GB
-processors=12
-# スワップスペースの確保（モデルロード時のバッファとして必須）
-swap=24GB
-# GPUダイレクトパススルーの有効化
-guiApplications=false
-nestedVirtualization=true
-```
-
-### 5.3 NVIDIA CUDA パススルーと Ollama GPU 認識検証
-WSL2 ターミナル上で NVIDIA GPU が正しく認識され、Ollama が GPU 推論を行えることを検証する。
-
-```bash
-# 1. NVIDIA ドライバおよび CUDA レイヤーの確認
-nvidia-smi
-# -> GPU 名称と VRAM 使用状況が正常に表示されることを確認
-
-# 2. Ollama サーバーログでの CUDA 認識確認
-journalctl -u ollama --no-pager | grep -i cuda
-# -> "NVIDIA GPU detected" や "CUDA layer initialized" が出力されていることを確認
+python tools/score-issues.py
+python tools/check-blockers.py
 ```
 
 ---
 
-## 6. 定常自動バッチ・バックグラウンドワーカー (`systemd`) の構成
+## 5. OS別最適化および Windows Native / WSL2 セットアップガイド
 
-朝の優先度スコアリングや夜間の自動テスト走行を確実に行うため、Linux / WSL2 の systemd ユーザーサービスとして自動化エンジンを登録する。
+### 5.1 Windows Native 環境向け最適化設定 (PowerShell)
 
-### 6.1 スコアリングバッチ用 systemd サービス (`~/.config/systemd/user/second-brain-batch.service`)
-```ini
-[Unit]
-Description=Second Brain OS Daily Issue Scoring and Blocker Detection Job
-After=network.target
+Windows Native 環境で動作させる場合は、以下の Git および PowerShell 設定が必須となる。
 
-[Service]
-Type=oneshot
-WorkingDirectory=/home/%u/second-brain
-ExecStart=/home/%u/.local/bin/uv run python tools/score-issues.py
-ExecStartPost=/home/%u/.local/bin/uv run python tools/check-blockers.py
-StandardOutput=append:/home/%u/second-brain/tools/.cache/daily_batch.log
-StandardError=append:/home/%u/second-brain/tools/.cache/daily_batch.err
+1. **Git 改行コードバグ対策 (`autocrlf` 設定):**
+   Aider による差分適用時に CRLF / LF 混在で diff が爆発することを防ぐため、必ず `input` を設定する。
+   ```powershell
+   git config --global core.autocrlf input
+   ```
 
-[Install]
-WantedBy=default.target
-```
+2. **PowerShell 文字化け対策 (UTF-8 設定):**
+   日本語パスや Reviewdog の出力文字化けを防止するため、PowerShell プロファイル (`$PROFILE`) に以下を追加する。
+   ```powershell
+   $OutputEncoding = [Console]::InputEncoding = [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
+   ```
 
-### 6.2 タイマーユニット (`~/.config/systemd/user/second-brain-batch.timer`)
-```ini
-[Unit]
-Description=Timer for Second Brain Daily Scoring Job (Every morning at 07:00 JST)
+### 5.2 WSL2 環境向けパフォーマンス最適化 (Linux)
+WSL2 環境で構築する場合は、NTFS クロスアクセスによる速度低下を防ぐため、必ず WSL2 内部の Linux 仮想ディスク (`/home/<username>/second-brain`) 上にリポジトリを配置すること。
 
-[Timer]
-OnCalendar=*-*-* 07:00:00
-Persistent=true
-Unit=second-brain-batch.service
+---
 
-[Install]
-WantedBy=timers.target
-```
+## 6. 定常自動バッチ・バックグラウンドワーカーの構成
 
-#### サービスの有効化コマンド
-```bash
-systemctl --user daemon-reload
-systemctl --user enable --now second-brain-batch.timer
-systemctl --user list-timers
+朝の優先度スコアリングや自動ブロッカー検知を確実に行うための自動化登録手順を規定する。
+
+### 6.1 Linux / WSL2 環境向け (systemd)
+`~/.config/systemd/user/second-brain-batch.service` およびタイマーユニットを作成し、`systemctl --user enable --now second-brain-batch.timer` を実行する。
+
+### 6.2 Windows Native 環境向け (Task Scheduler)
+Windows Native 環境では PowerShell から `Register-ScheduledTask` コマンドを用いて日次ジョブを登録する。
+
+```powershell
+# 毎朝 07:00 に score-issues.py と check-blockers.py を自動実行するタスク登録
+$Action = New-ScheduledTaskAction -Execute "uv" -Argument "run python tools/score-issues.py" -WorkingDirectory "$Home\second-brain"
+$Trigger = New-ScheduledTaskTrigger -Daily -At 7:00AM
+Register-ScheduledTask -TaskName "SecondBrainDailyScoring" -Action $Action -Trigger $Trigger -Description "Second Brain OS Daily Scoring Job"
 ```
 
 ---
 
 ## 7. 全環境診断・健全性検証スクリプト (`verify_environment.py`)
 
-構築作業完了後、全層（LLM API, CLI, Linter, Git, スコアリング）の動作状況を一括診断するスクリプトの実装仕様である。
+構築作業完了後、全層（Ollama API, Aider, Reviewdog, Ruff, Pytest, LangGraph）の動作状況を一括診断するスクリプトの実装仕様である。
 
 ```python
 #!/usr/bin/env python3
-"""Second Brain OS 環境健全性診断スクリプト"""
+"""Second Brain OS (Rev.4.2) 環境健全性診断スクリプト"""
 import os
 import sys
 import subprocess
@@ -378,20 +253,22 @@ def main():
     except Exception as e:
         print_result("Ollama API Server Running", False, str(e))
         
-    # 3. OpenCode CLI コマンドチェック
-    try:
-        out = subprocess.check_output(["opencode", "--version"], stderr=subprocess.STDOUT, text=True)
-        print_result("OpenCode CLI Installed", True, out.strip())
-    except Exception as e:
-        print_result("OpenCode CLI Installed", False, str(e))
-        
-    # 4. 必須 Python ツール (ruff, pytest) チェック
-    for tool in ["ruff", "pytest"]:
+    # 3. 新OSSスタック (Aider, Reviewdog, Ruff, Pytest) コマンドチェック
+    for tool, cmd_flag in [("aider", "--version"), ("reviewdog", "-version"), ("ruff", "--version"), ("pytest", "--version")]:
         try:
-            out = subprocess.check_output([tool, "--version"], stderr=subprocess.STDOUT, text=True)
-            print_result(f"Tool {tool} Available", True, out.splitlines()[0])
+            out = subprocess.check_output([tool, cmd_flag], stderr=subprocess.STDOUT, text=True)
+            print_result(f"Tool '{tool}' Available", True, out.splitlines()[0].strip())
         except Exception as e:
-            print_result(f"Tool {tool} Available", False, str(e))
+            print_result(f"Tool '{tool}' Available", False, str(e))
+
+    # 4. LangGraph / LiteLLM Python パッケージインポートチェック
+    try:
+        import langgraph
+        import litellm
+        import pytest_jsonreport
+        print_result("Python OSS Packages (LangGraph, LiteLLM, etc.)", True, "Imported successfully")
+    except ImportError as e:
+        print_result("Python OSS Packages", False, f"ImportError: {e}")
             
     # 5. 台帳インデックス構造チェック
     reg_path = "projects/.project-registry.json"
