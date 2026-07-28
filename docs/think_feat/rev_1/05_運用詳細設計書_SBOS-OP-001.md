@@ -425,3 +425,24 @@ for proj in ~/second-brain/projects/*/; do
 done
 echo "=== Backup Completed Successfully: $BACKUP_DIR ==="
 ```
+
+#### Windows Native 環境向けバックアップ手順 (PowerShell) (III.4追記)
+
+```powershell
+# バックアップスクリプト (tools\backup-second-brain.ps1)
+$DateStr = Get-Date -Format "yyyyMMdd_HHmmss"
+$BackupDir = "C:\backup\second-brain-$DateStr"
+New-Item -ItemType Directory -Path $BackupDir -Force
+
+Write-Host "=== Starting Backup of Second Brain OS (Windows) ==="
+# 1. 母艦アーカイブ
+Compress-Archive -Path "C:\Users\xzyoi\Desktop\python\second-brain\*" -DestinationPath "$BackupDir\second-brain-root.zip" -Exclude "*.venv*", "tools\.cache\*"
+
+# 2. 各衛星アーカイブ
+Get-ChildItem -Path "C:\Users\xzyoi\Desktop\python\second-brain\projects" -Directory | ForEach-Object {
+    if (Test-Path "$($_.FullName)\.git") {
+        Compress-Archive -Path "$($_.FullName)\*" -DestinationPath "$BackupDir\proj-$($_.Name).zip" -Exclude "*.venv*", "node_modules*", "__pycache__*"
+    }
+}
+Write-Host "=== Backup Completed Successfully: $BackupDir ==="
+```

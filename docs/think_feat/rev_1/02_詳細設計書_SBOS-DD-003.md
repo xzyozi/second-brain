@@ -122,7 +122,7 @@ def get_git_diff(project_path: Path) -> str:
 
 ```python
 def lint_node(state: OrchestratorState) -> OrchestratorState:
-    """Ruffを実行し、JSON形式の指摘一覧を取得する。失敗時はノード内でlint_roundをインクリメントする。"""
+    """Ruffを実行し、JSON形式の指摘一覧を取得する。失敗時はノード内でlint_roundをインクリメントし、Aider用フィードバックを蓄積する。"""
     import subprocess, json
     result = subprocess.run(
         ["ruff", "check", "--output-format=json", "."],
@@ -131,13 +131,14 @@ def lint_node(state: OrchestratorState) -> OrchestratorState:
     issues = json.loads(result.stdout) if result.stdout.strip() else []
     passed = len(issues) == 0
     if not passed:
-        # [2.1修正] インクリメントはノード内で行い、ルーティング関数を副作用ゼロに保つ
         state["lint_round"] = state.get("lint_round", 0) + 1
+        # [III.1修正] Aiderへ修正指示を渡すため aider_message にログを蓄積
+        state["aider_message"] = (state.get("aider_message", "") + "\n\n## Ruff指摘事項:\n" + json.dumps(issues, ensure_ascii=False)).strip()
     state["lint_result"] = {"passed": passed, "issues": issues}
     return state
 
 def test_node(state: OrchestratorState) -> OrchestratorState:
-    """pytestを実行し、JSON形式のレポートを取得する。失敗時はノード内でtest_roundをインクリメントする。"""
+    """pytestを実行し、JSON形式のレポートを取得する。失敗時はノード内でtest_roundをインクリメントし、Aider用フィードバックを蓄積する。"""
     import subprocess, json
     report_path = Path(state["project_path"]) / ".pytest_report.json"
     subprocess.run(
@@ -152,8 +153,9 @@ def test_node(state: OrchestratorState) -> OrchestratorState:
         passed = False
         log = "pytestレポートが生成されませんでした"
     if not passed:
-        # [2.1修正] インクリメントはノード内で行い、ルーティング関数を副作用ゼロに保つ
         state["test_round"] = state.get("test_round", 0) + 1
+        # [III.1修正] Aiderへ修正指示を渡すため aider_message にログを蓄積
+        state["aider_message"] = (state.get("aider_message", "") + "\n\n## pytest失敗ログ:\n" + log).strip()
     state["test_result"] = {"passed": passed, "log": log}
     return state
 
@@ -214,17 +216,21 @@ def build_graph():
     return g.compile()
 ```
 
-### 4.1 B7 ブロッカー判定と `escalate_node` (F2修正)
+### 4.1 B7 ブロッカー判定と `escalate_node` (F2 / III.2 統合修正)
 `escalate_node` はレビュー、lint、または test の試行回数が `max_round` に達した際に呼ばれる。
-固定値の `round:3` ではなく、**`state["round"]` (または発生時点の実際の試行数)** を動的に `tasks.md` 内のメタデータへ書き込む。これにより、`max_round` が可変（例: 5）であっても `check-blockers.py` の `B7` 判定条件（`round >= max_round`）が正確に判定される。
+固定値の `round:3` ではなく、**`actual_round = max(state["round"], state["lint_round"], state["test_round"])` の実測値** を動的に `tasks.md` 内のメタデータへ書き込む。
+
+> **B7 ブロッカー検知のシングルソース・オブ・トゥルース (SSOT):**
+> 日次バッチ `check-blockers.py` は **`tasks.md` 内の `round >= max_round` を正の判定基準** とする。`execution_history.json` 側の `review.total_rounds` は副次的な監査ログとして位置づけ、両者の整合性を維持する。
 
 ```python
 def escalate_node(state: OrchestratorState) -> OrchestratorState:
     """レビュー/テスト/lint の試行回数上限到達時に tasks.md を動的更新し、B7 ブロッカー化させる"""
-    actual_round = max(state["round"], state["lint_round"], state["test_round"])
+    actual_round = max(state.get("round", 0), state.get("lint_round", 0), state.get("test_round", 0))
     logger.error(f"Issue {state['issue_id']} がリトライ上限 ({actual_round}/{state['max_round']}) に達しました。B7ブロッカー化します。")
-    # [F2修正] 固定値 'round:3' ではなく動的な actual_round を書き込む
+    # [F2/III.2修正] tasks.md 内の round メタデータを動的更新し、B7 判定を成立させる
     update_task_metadata(state["project_path"], state["issue_id"], round_num=actual_round)
+    record_execution_history(state, final_status="FAILED_B7", actual_round=actual_round)
     return state
 ```
 
