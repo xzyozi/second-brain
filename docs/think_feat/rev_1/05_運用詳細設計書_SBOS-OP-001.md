@@ -4,11 +4,11 @@
 | 項目 | 内容 |
 | :--- | :--- |
 | 文書番号 | SBOS-OP-001 |
-| 版数     | Rev.4.0（LangGraph CLI / 新OSSスタック完全統合・運用手順全面刷新版）|
+| 版数     | Rev.4.1（用語表現修復・DD-003 Rev.4.4連携完了版）|
 | 改訂日   | 2026年7月28日 |
 | 作成日 | 2026年7月27日 |
 | 対象読者 | 運用エンジニア / プロジェクトリード / DevOpsエンジニア |
-| 関連文書 | SBOS-BD-002（基本設計書 Rev.4.2）、SBOS-DD-003（詳細設計書 Rev.4.3）、SBOS-ENV-001（環境構築仕様書 Rev.4.2）、SBOS-PM-005（矛盾点一覧） |
+| 関連文書 | SBOS-BD-002（基本設計書 Rev.4.3）、SBOS-DD-003（詳細設計書 Rev.4.4）、SBOS-ENV-001（環境構築仕様書 Rev.4.2）、SBOS-PM-005（矛盾点一覧） |
 
 ---
 
@@ -88,7 +88,7 @@ Rev.4.0 より OpenCode CLI は廃止され、LangGraph ベースのエントリ
   - 対象 Issue の説明文が長すぎる場合は、タスクを分割して指示文を簡潔にする。
 
 ### ケース2: テスト/静的解析の継続失敗 (`max_round` 到達)
-- **症状:** Aider による修復が `max_round`（デフォルト3回）連続で失敗し、`escalate_node` に遷移して `State.FAILED` になる。
+- **症状:** Aider による修復が `max_round`（デフォルト3回）連続で失敗し、`escalate_node` に遷移して `final_status: "FAILED_B7"` として記録される。
 - **対処:**
   - `orchestrator_graph.py` の実行ログから直近の pytest / Ruff エラーログを確認。
   - テストコードや型定義の直接編集が必要な場合は、人間が `projects/<name>/` を編集する。

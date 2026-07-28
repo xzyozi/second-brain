@@ -4,10 +4,10 @@
 | 項目     | 内容                                                           |
 | :------- | :--------------------------------------------------------------- |
 | 文書番号 | SBOS-DD-003                                                      |
-| 版数     | Rev.4.3（MODEL_MAP明記・OP-001 Rev.4.0連携修復版） |
+| 版数     | Rev.4.4（CLIエントリポイント仕様明記・完全整合版） |
 | 改訂日   | 2026年7月28日                                                     |
 | 作成日   | 2026年7月28日                                                     |
-| 関連文書 | SBOS-BD-002（基本設計書 Rev.4.2）、SBOS-MULTI-001 Rev.2.1、SBOS-OP-001 Rev.4.0、SBOS-OSS-001/002 |
+| 関連文書 | SBOS-BD-002（基本設計書 Rev.4.3）、SBOS-MULTI-001 Rev.2.1、SBOS-OP-001 Rev.4.1、SBOS-OSS-001/002 |
 | 対象読者 | 実装担当エンジニア / アーキテクト / テストエンジニア             |
 
 ---
@@ -241,9 +241,64 @@ def escalate_node(state: OrchestratorState) -> OrchestratorState:
 
 ---
 
-## 5. テスト・検証設計
+## 5. CLI エントリポイント仕様 (`tools/orchestrator_graph.py`)
+
+OP-001 §1.2 で規定される運用コマンド（`orchestrate` および `execute`）を処理する CLI インターフェースの仕様を定義する。
+
+```python
+import argparse
+import json
+from pathlib import Path
+
+def cmd_orchestrate(args):
+    """優先度キャッシュ priority-cache.json から対話的に上位3件を提示する"""
+    cache_path = Path("tools/.cache/priority-cache.json")
+    if not cache_path.exists():
+        print("エラー: 優先度キャッシュが存在しません。score-issues.py を実行してください。")
+        return
+    data = json.loads(cache_path.read_text(encoding="utf-8"))
+    issues = data.get("issues", [])[:3]
+    print("【本日の実行計画 (推奨上位3件)】")
+    for idx, item in enumerate(issues, 1):
+        print(f"{idx}位: [{item['id']}]「{item['title']}」（スコア: {item['score']}）")
+    if issues:
+        top_id = issues[0]["id"]
+        print(f"\n実行するには: uv run python tools/orchestrator_graph.py execute --issue-id {top_id}")
+
+def cmd_execute(args):
+    """指定された issue_id に対して LangGraph グラフを組み立てて実行する"""
+    issue_id = args.issue_id
+    graph = build_graph()
+    initial_state = build_initial_state(issue_id)  # tasks.md / project.json から構築
+    final_state = graph.invoke(initial_state)
+    print(f"Issue {issue_id} の実行が完了しました (最終状態: {final_state.get('review_verdict', 'FAILED')})")
+
+def main():
+    parser = argparse.ArgumentParser(description="Second Brain OS Orchestrator CLI (LangGraph)")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    # orchestrate サブコマンド
+    p_orch = subparsers.add_parser("orchestrate", help="本日の優先度推奨タスク提示")
+    p_orch.set_defaults(func=cmd_orchestrate)
+
+    # execute サブコマンド
+    p_exec = subparsers.add_parser("execute", help="指定 Issue の自律グラフ実行")
+    p_exec.add_argument("--issue-id", required=True, help="対象 Issue ID (例: EC-012)")
+    p_exec.set_defaults(func=cmd_execute)
+
+    args = parser.parse_args()
+    args.func(args)
+
+if __name__ == "__main__":
+    main()
+```
+
+---
+
+## 6. テスト・検証設計
 
 1. **`test_orchestrator_graph.py`**: LangGraph の各状態遷移経路（`done`/`escalate`）テスト。`lint_round`/`test_round` 超過時の `escalate` 経路テストを含む。
 2. **`test_orchestrator_graph.py` ルーティング純粋関数テスト**: ルーティング関数 `route_after_lint`, `route_after_test`, `route_after_review` を複数回連続で呼び出しても State のカウンタが二重インクリメントされないことを検証。
-3. **`test_llm_client.py`**: LiteLLM 呼び出しおよび壊れた JSON レスポンス時の安全フォールバックテスト。
-4. **`test_aider_runner.py`**: `--no-auto-commits` （複数形）が常に付加されること、タイムアウト時に `AiderRunError` を送出することの検証。
+3. **`test_orchestrator_graph_cli.py`**: CLI エントリポイントの `orchestrate`（キャッシュ読み込み表示）および `execute --issue-id`（引数パース・グラフ呼出）の挙動検証。
+4. **`test_llm_client.py`**: LiteLLM 呼び出しおよび壊れた JSON レスポンス時の安全フォールバックテスト。
+5. **`test_aider_runner.py`**: `--no-auto-commits` （複数形）が常に付加されること、タイムアウト時に `AiderRunError` を送出することの検証。
