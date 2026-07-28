@@ -11,6 +11,13 @@
 
 ---
 
+> [!IMPORTANT]
+> **【重要・アーキテクチャ移行に関する注記 (Rev.4.0以後の位置づけ)】**
+> 本書（SBOS-ORCH-001 Rev.3.1）は、自前実装時代（`orchestrator.py`, `agent_client.py`, 自作ASTマージ `_merge_python_code`）の制御アルゴリズム解説およびフォールバック参考資料です。
+> Rev.4.0 以降の新OSSスタック（LangGraph `StateGraph`, LiteLLM, Aider, Reviewdog）における現行の正本仕様は **『基本設計書 SBOS-BD-002 (Rev.4.2)』** および **『詳細設計書 SBOS-DD-003 (Rev.4.3)』** を参照してください。
+
+---
+
 ## 1. 自己修復ステートマシン構造（Rev.3.1 拡張版）
 
 `tools/orchestrator.py` に実装されている有向ステートマシンは、レビュー工程（`REVIEW_PASSED`）の追加とエラー再試行上限管理により、自律的な自己修復ループを形成する。

@@ -4,10 +4,10 @@
 | 項目     | 内容                                                           |
 | :------- | :--------------------------------------------------------------- |
 | 文書番号 | SBOS-DD-003                                                      |
-| 版数     | Rev.4.2（ルーティング純粋関数化・lint/testノードに副作用移動版） |
+| 版数     | Rev.4.3（MODEL_MAP明記・OP-001 Rev.4.0連携修復版） |
 | 改訂日   | 2026年7月28日                                                     |
 | 作成日   | 2026年7月28日                                                     |
-| 関連文書 | SBOS-BD-002（基本設計書 Rev.4.1）、SBOS-MULTI-001 Rev.2.1、SBOS-OP-001 Rev.3.3（※旧自前実装向け。新アーキテクチャ移行に伴い大半が改訂対象）、SBOS-OSS-001/002 |
+| 関連文書 | SBOS-BD-002（基本設計書 Rev.4.2）、SBOS-MULTI-001 Rev.2.1、SBOS-OP-001 Rev.4.0、SBOS-OSS-001/002 |
 | 対象読者 | 実装担当エンジニア / アーキテクト / テストエンジニア             |
 
 ---
@@ -67,7 +67,12 @@ import json, re, logging, litellm
 from typing import Optional
 
 logger = logging.getLogger("llm_client")
-MODEL_MAP = {"planner": "ollama/qwen2.5-coder:14b", "reviewer": "ollama/qwen3:32b"}
+# [MODEL_MAP明記] ENV-001 と完全整合させるため coder キーを明記
+MODEL_MAP = {
+    "planner": "ollama/qwen2.5-coder:14b",
+    "coder": "ollama/qwen2.5-coder:7b-16k",
+    "reviewer": "ollama/qwen3:32b",
+}
 
 def call_llm(role: str, system_prompt: str, user_prompt: str, expect_json: bool = False, timeout: int = 300) -> dict:
     model = MODEL_MAP.get(role, "ollama/qwen2.5-coder:7b-16k")
