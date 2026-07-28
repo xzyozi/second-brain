@@ -4,11 +4,11 @@
 | 項目 | 内容 |
 | :--- | :--- |
 | 文書番号 | SBOS-OP-001 |
-| 版数     | Rev.3.3 |
-| 改訂日   | 2026年7月28日（D1〜D5 バグ修正）|
+| 版数     | Rev.3.4 |
+| 改訂日   | 2026年7月28日（新OSSスタック記述完全置換・PSパス汎用化）|
 | 作成日 | 2026年7月27日 |
 | 対象読者 | 運用エンジニア / プロジェクトリード / DevOpsエンジニア |
-| 関連文書 | SBOS-BD-002（基本設計書）、SBOS-ENV-001（環境構築仕様書）、SBOS-PM-005（矛盾点一覧） |
+| 関連文書 | SBOS-BD-002（基本設計書 Rev.4.1）、SBOS-DD-003（詳細設計書 Rev.4.2）、SBOS-ENV-001（環境構築仕様書）、SBOS-PM-005（矛盾点一覧） |
 
 ---
 
@@ -54,10 +54,10 @@ $$\text{Score} = \frac{\text{Total}}{42.5} \times 100$$
 
 2. **自律ループの起動 (`/work <ID>`):**
    ユーザーが `y` または `/work EC-012` を入力すると、Orchestrator が立ち上がり、以下のフェーズを自動的に進行する。
-   - ① 要件収集 ＆ 制約検証
-   - ② Executor による実装指示書生成
-   - ③ Coder によるコード生成 ＆ AST マージ
-   - ④ Ruff / pytest による自動検証（失敗時は自動自己修復）
+   - ① 要件収集 ＆ 制約検証 (`plan_node`)
+   - ② Executor (LiteLLM) による実装指示書生成
+   - ③ Aider によるコード生成 ＆ Gitワーキングツリー差分編集 (`--no-auto-commits`)
+   - ④ Ruff / pytest / Reviewdog による自動検証（失敗時は自動自己修復）
    - ⑤ Reviewer Agent による差分監査（指示書とdiffの突き合わせ）
    - ⑥ すべて通過後、`execution_history.json` に実行結果を記録し、`tasks.md` のステータスを `[x]` に更新して完了。（注: `orchestrator.py` は git 操作を行わない。コミットは運用者が手動で実施すること。）
 
@@ -170,8 +170,8 @@ python tools/record-failure.py   --agent "coder"   --issue "EC-018"   --error "O
 
 運用中に発生しうる主要な障害ケースと、対応すべき具体的アプローチを規定する。
 
-### ケース1: LLM 応答パース失敗 (`Agent response parse failed`)
-- **症状:** `agent_client.py` で `ERROR: Agent response parse failed` が出力され、最大3回リトライ後も失敗する。
+### ケース1: LLM 応答パース失敗 (`JSON抽出失敗` / パースエラー)
+- **症状:** `llm_client.py` (LiteLLM) で `JSON抽出失敗` や `JSONパースエラー` が出力され、`changes_requested` にフォールバックする。
 - **根本原因:**
   1. Ollama のコンテキスト窓（`num_ctx`）が枯渇し、モデルが出力を途中で打ち切っている。
   2. モデルが JSON フォーマットの要求を無視し、前後に解説文や挨拶を混入させている。
@@ -180,10 +180,9 @@ python tools/record-failure.py   --agent "coder"   --issue "EC-018"   --error "O
   **Linux / macOS:**
   ```bash
   # 1. 中間キャッシュの削除
-  # [D4修正] context_*.json は実在しないファイル名。実在するキャッシュを削除する
   rm -f tools/.cache/priority-cache.json tools/.cache/blocked.json
 
-  # 2. agent_client.py 内のパース正規表現の緩和確認
+  # 2. llm_client.py 内のパース正規表現の緩和確認
   # または対象 Issue のタスク記述を分割して短くする
   ```
 
@@ -193,16 +192,16 @@ python tools/record-failure.py   --agent "coder"   --issue "EC-018"   --error "O
   ```
 
 ### ケース2: テスト継続失敗 (`TestFailureError` / 上限到達)
-- **症状:** Coder が2回修正を試みてもテストが通らず、`State.FAILED` に遷移する。
+- **症状:** Aider が複数回修正を試みてもテストが通らず、`State.FAILED` / `escalate_node` に遷移する。
 - **根本原因:**
   1. 既存のテストコード側が古く、新しい要件と矛盾している。
   2. データベースや外部モジュールのモック設定が不足している。
 - **対処・解消手順:**
-  - `orchestrator.py` のログから直近の pytest 失敗ログを確認する。
+  - `orchestrator_graph.py` のログから直近の pytest 失敗ログを確認する。
   - テストコードの修正が必要な場合は、人間が `projects/<name>/tests/` を編集する（LLM にテストコードの無断書き換えを許さないため、これは意図された正しいエスカレーションである）。
 
-### ケース3: OpenCode CLI サブプロセスのタイムアウト
-- **症状:** `AgentCallError: Agent executor がタイムアウトしました (timeout=300)` が発生。
+### ケース3: Aider CLI / LiteLLM 推論のタイムアウト
+- **症状:** `AiderRunError: Aider実行がタイムアウトしました (timeout=600)` または LiteLLM タイムアウトが発生。
 - **根本原因:**
   1. ローカルマシンで他の重いプロセス（動画エンコードや別のLLM推論）が走り、GPU リソースが枯渇している。
   2. Ollama が swap に落ちており、推論速度が著しく低下している。
@@ -211,17 +210,16 @@ python tools/record-failure.py   --agent "coder"   --issue "EC-018"   --error "O
   # 1. Ollama の実行プロセスと VRAM 使用状況の確認
   nvidia-smi  # または htop / asitop
 
-  # 2. agent_client.py のデフォルトタイムアウトを延長
-  # [C8修正] コンストラクタ引数名は default_timeout ではなく timeout
-  # AgentClient(timeout=600) へ一時調整するか、軽量モデル(7B)へフォールバック
+  # 2. aider_runner.py または llm_client.py の default timeout パラメータを延長
+  # aider_runner.py(timeout=900) へ一時調整するか、軽量モデル(7B)へフォールバック
   ```
 
-### ケース4: AST マージの衝突および構文エラー検知 (`SyntaxError during merge`)
-- **症状:** `_merge_python_code` 実行時に `SyntaxError` がスローされ、ファイルが更新されない。
+### ケース4: Aider の Git 差分適用失敗および構文エラー検知 (`Ruff / syntax error`)
+- **症状:** `lint_node` 実行時に Ruff で構文エラーが連続検知され、Aider への再適用が失敗する。
 - **根本原因:**
-  - Coder が出力した Python コードが、不完全なインデントや未閉じの文字列リテラルを含んでいる。
+  - Aider またはモデルが出力した Python コードが、不完全なインデントや未閉じの文字列リテラルを含んでいる。
 - **対処・解消手順:**
-  - `orchestrator.py` は自動的に書き込み前のオリジナルスナップショット（`existing_content`）へロールバックし、リポジトリの破壊を防ぐように設計されている。
+  - `aider_runner.py` は `--no-auto-commits` オプションによりワーキングツリーの変更として保持するため、必要に応じて `git checkout -- .` で未コミット差分を一括破棄できる。
   - エラーログを確認し、モデルの温度パラメータ（temperature）を下げて再実行するか、またはプロンプト指示書の曖昧な記述を明確化する。
 
 ### ケース5: レビュー差し戻し上限到達（B7ブロッカー）⭐NEW
@@ -376,17 +374,16 @@ if __name__ == "__main__":
 
 | 検証フェーズ | 実行内容・コマンド | 合否判定基準（許容ライン） |
 | :--- | :--- | :--- |
-| **1. 構文追従性テスト** | `opencode run --agent coder -m ollama/<new-model> ...` にてダミー指示書を投入 | 出力にマークダウンの文脈や挨拶が混入せず、100%の確率でクリーンなコードブロックのみを返すこと。 |
-| **2. リファクタリングマージテスト** | クラス内メソッド1件変更指示を出し、`_merge_python_code` を走行 | 既存の無関係なメソッドやプロパティが欠落・破壊されないこと。 |
-| **3. 監査厳密性テスト (Reviewer)** | 意図的に例外処理を削ったバグ込みのコードと仕様書を提示 | `changes_requested` を正しく返し、バグの所在行番号を指摘できること。 |
+| **1. 構文追従性テスト** | `uv run python tools/orchestrator_graph.py` にてダミー指示書を投入 | 出力にマークダウンの文脈や挨拶が混入せず、100%の確率でクリーンなコードブロックのみを返すこと。 |
+| **2. リファクタリングマージテスト (Aider)** | クラス内メソッド1件変更指示を出し、Aider 差分編集を実行 | 既存の無関係なメソッドやプロパティが欠落・破壊されないこと。 |
+| **3. 監査厳密性テスト (Reviewer)** | 意図的に例外処理を削ったバグ込みのコードと仕様書を提示 | `changes_requested` を正しく返し、Reviewdog にバグの所在行番号が指摘されること。 |
 
 ### 6.2 ロールバック（切り戻し）手順
-新モデル投入後に `Agent response parse failed` やループ上限到達の頻度が急増した場合、以下のコマンドで即座に旧安定バージョンへロールバックする。
+新モデル投入後に `JSON抽出失敗` やループ上限到達の頻度が急増した場合、以下のコマンドで即座に旧安定バージョンへロールバックする。
 
 ```bash
-# 1. opencode.json のモデル指定を安定版 (例: qwen2.5-coder:7b-16k) へ戻す
-# [C9修正] 正しいパスは ~/second-brain/opencode.json
-git checkout ~/second-brain/opencode.json
+# 1. tools/llm_client.py のモデル指定を安定版 (例: qwen2.5-coder:7b-16k) へ戻す
+git checkout ~/second-brain/tools/llm_client.py
 
 # 2. Ollama サーバー上の不安定な新モデルのタグを削除
 ollama rm <unstable-new-model-tag>
@@ -426,7 +423,7 @@ done
 echo "=== Backup Completed Successfully: $BACKUP_DIR ==="
 ```
 
-#### Windows Native 環境向けバックアップ手順 (PowerShell) (III.4追記)
+#### Windows Native 環境向けバックアップ手順 (PowerShell) (III.4追記 / パス汎用化)
 
 ```powershell
 # バックアップスクリプト (tools\backup-second-brain.ps1)
@@ -434,12 +431,15 @@ $DateStr = Get-Date -Format "yyyyMMdd_HHmmss"
 $BackupDir = "C:\backup\second-brain-$DateStr"
 New-Item -ItemType Directory -Path $BackupDir -Force
 
+# 環境変数を用いた汎用パス設定 ($Home\second-brain)
+$BaseDir = "$Home\second-brain"
+
 Write-Host "=== Starting Backup of Second Brain OS (Windows) ==="
 # 1. 母艦アーカイブ
-Compress-Archive -Path "C:\Users\xzyoi\Desktop\python\second-brain\*" -DestinationPath "$BackupDir\second-brain-root.zip" -Exclude "*.venv*", "tools\.cache\*"
+Compress-Archive -Path "$BaseDir\*" -DestinationPath "$BackupDir\second-brain-root.zip" -Exclude "*.venv*", "tools\.cache\*"
 
 # 2. 各衛星アーカイブ
-Get-ChildItem -Path "C:\Users\xzyoi\Desktop\python\second-brain\projects" -Directory | ForEach-Object {
+Get-ChildItem -Path "$BaseDir\projects" -Directory | ForEach-Object {
     if (Test-Path "$($_.FullName)\.git") {
         Compress-Archive -Path "$($_.FullName)\*" -DestinationPath "$BackupDir\proj-$($_.Name).zip" -Exclude "*.venv*", "node_modules*", "__pycache__*"
     }
