@@ -4,6 +4,7 @@ import re
 import argparse
 import datetime
 from pathlib import Path
+from tools.task_parser import parse_comment_metadata
 
 def main():
     parser = argparse.ArgumentParser(description="既存タスクのメタデータ修正")
@@ -43,11 +44,7 @@ def main():
     comment_content = m_comment.group(1)
     
     # メタデータのパースと更新
-    meta = {}
-    for item in re.split(r"\s+", comment_content.strip()):
-        if ":" in item:
-            k, v = item.split(":", 1)
-            meta[k] = v
+    meta = parse_comment_metadata(comment_content)
             
     # 値の更新
     if args.priority:
@@ -58,7 +55,17 @@ def main():
     meta["updated"] = datetime.date.today().isoformat()
     
     # 新しいコメント文字列の生成
-    meta_str = " ".join(f"{k}:{v}" for k, v in meta.items())
+    meta_parts = []
+    for k, v in meta.items():
+        if k == "blockedby":
+            if isinstance(v, list):
+                for val in v:
+                    meta_parts.append(f"blockedby:{val}")
+            else:
+                meta_parts.append(f"blockedby:{v}")
+        else:
+            meta_parts.append(f"{k}:{v}")
+    meta_str = " ".join(meta_parts)
     new_comment = f"<!-- {meta_str} -->"
     
     # 行の置換

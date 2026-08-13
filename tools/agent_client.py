@@ -166,16 +166,14 @@ class AgentClient:
         """subprocess でOpenCode CLIを実行"""
         logger.debug(f"  コマンド実行: {self.opencode_bin} run --agent {agent_name}")
 
-        # Windows環境対応: shell=True を使用
-        # プロンプトにシングルクォートが含まれる場合はエスケープ
-        safe_prompt = prompt.replace("'", "'\\''")
-
-        cmd = f"{self.opencode_bin} run --agent {agent_name} '{safe_prompt}'"
+        import shutil
+        cmd_path = shutil.which(self.opencode_bin) or self.opencode_bin
+        cmd = [cmd_path, "run", "--agent", agent_name, prompt]
 
         try:
             result = subprocess.run(
                 cmd,
-                shell=True,
+                shell=False,
                 capture_output=True,
                 text=True,
                 timeout=self.timeout,
@@ -273,6 +271,9 @@ class AgentClient:
         """Coder応答からコードブロックを抽出"""
         # 改行コードの差異 (\r\n) を \n に正規化して改行一致エラーを防止
         normalized_output = raw_output.replace('\r\n', '\n')
+
+        # <think>...</think> タグが含まれている場合は除去
+        normalized_output = re.sub(r'<think>.*?</think>', '', normalized_output, flags=re.DOTALL)
 
         # ```python ... ```, ```py ... ```, またはプレーンな ``` ... ``` 形式を大文字小文字を区別せず抽出
         code_blocks = re.findall(

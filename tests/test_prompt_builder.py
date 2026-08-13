@@ -112,6 +112,37 @@ class TestPromptBuilder:
         assert context_summary in prompt
         assert "外部モジュール使用: 禁止" in prompt
 
+    def test_build_implementation_prompt_with_parent_id(self, tmp_path):
+        """parent_idが含まれる場合の実装指示書プロンプト構築テスト"""
+        agents_dir = tmp_path / "agents"
+        agents_dir.mkdir()
+        (agents_dir / "executor.md").write_text("# Executor Template", encoding="utf-8")
+
+        builder = PromptBuilder(agents_dir=agents_dir)
+
+        requirements = Requirements(
+            issue_id="ARCH-002",
+            title="テストIssue",
+            description="テスト説明",
+            project_path=Path("."),
+            related_files=[],
+            priority="high",
+            parent_id="ARCH-001"
+        )
+
+        constraints = Constraints(
+            external_modules_forbidden=True,
+            allowed_imports=["sys"]
+        )
+
+        prompt = builder.build_implementation_prompt(
+            requirements,
+            constraints
+        )
+
+        assert "ARCH-002" in prompt
+        assert "**親Issue ID**: ARCH-001" in prompt
+
     def test_build_coding_prompt_basic(self, tmp_path):
         """コード生成プロンプト構築の基本テスト"""
         agents_dir = tmp_path / "agents"

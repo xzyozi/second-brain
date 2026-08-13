@@ -7,6 +7,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
 import sys
+import json
 
 # tools/ をインポートパスに追加
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -120,6 +121,65 @@ class TestIssueOrchestrator:
         with pytest.raises(OrchestratorError, match="が tasks.md に見つかりません"):
             orchestrator._gather_requirements("NONEXISTENT-999")
 
+    def test_gather_requirements_with_parent_and_blockedby_ok(self, tmp_path):
+        """parent_idおよび完了済みのblockedby依存関係を持つ要件収集のテスト"""
+        tasks_md = tmp_path / "tasks.md"
+        tasks_md.write_text("""
+# タスクリスト
+- [x] [ARCH-001] 先行タスク  <!-- priority:high -->
+- [ ] [ARCH-002] 後続タスク  <!-- priority:medium parent:ARCH-003 blockedby:#ARCH-001 -->
+""", encoding="utf-8")
+
+        orchestrator = IssueOrchestrator(root_dir=tmp_path)
+        requirements = orchestrator._gather_requirements("ARCH-002")
+
+        assert requirements.issue_id == "ARCH-002"
+        assert requirements.parent_id == "ARCH-003"
+
+    def test_gather_requirements_blockedby_incomplete(self, tmp_path):
+        """未完了のblockedby依存関係がある場合にエラーとなるテスト"""
+        tasks_md = tmp_path / "tasks.md"
+        tasks_md.write_text("""
+# タスクリスト
+- [ ] [ARCH-001] 先行タスク（未完了）  <!-- priority:high -->
+- [ ] [ARCH-002] 後続タスク  <!-- priority:medium blockedby:#ARCH-001 -->
+""", encoding="utf-8")
+
+        orchestrator = IssueOrchestrator(root_dir=tmp_path)
+
+        with pytest.raises(OrchestratorError, match="is blocked by incomplete dependency: ARCH-001"):
+            orchestrator._gather_requirements("ARCH-002")
+
+    def test_gather_requirements_multiple_blockedby_incomplete(self, tmp_path):
+        """複数のblockedbyのうち、1つでも未完了のものがあればエラーになるテスト"""
+        tasks_md = tmp_path / "tasks.md"
+        tasks_md.write_text("""
+# タスクリスト
+- [x] [ARCH-001] 先行タスクA（完了）  <!-- priority:high -->
+- [ ] [ARCH-002] 先行タスクB（未完了）  <!-- priority:high -->
+- [ ] [ARCH-003] 後続タスク  <!-- priority:medium blockedby:#ARCH-001 blockedby:#ARCH-002 -->
+""", encoding="utf-8")
+
+        orchestrator = IssueOrchestrator(root_dir=tmp_path)
+
+        with pytest.raises(OrchestratorError, match="is blocked by incomplete dependency: ARCH-002"):
+            orchestrator._gather_requirements("ARCH-003")
+
+    def test_gather_requirements_multiple_blockedby_ok(self, tmp_path):
+        """複数のblockedbyがすべて完了している場合は正常に動作するテスト"""
+        tasks_md = tmp_path / "tasks.md"
+        tasks_md.write_text("""
+# タスクリスト
+- [x] [ARCH-001] 先行タスクA（完了）  <!-- priority:high -->
+- [x] [ARCH-002] 先行タスクB（完了）  <!-- priority:high -->
+- [ ] [ARCH-003] 後続タスク  <!-- priority:medium blockedby:#ARCH-001 blockedby:#ARCH-002 -->
+""", encoding="utf-8")
+
+        orchestrator = IssueOrchestrator(root_dir=tmp_path)
+        requirements = orchestrator._gather_requirements("ARCH-003")
+
+        assert requirements.issue_id == "ARCH-003"
+
     def test_verify_constraints(self, tmp_path):
         """制約検証テスト"""
         orchestrator = IssueOrchestrator(root_dir=tmp_path)
@@ -138,6 +198,38 @@ class TestIssueOrchestrator:
         assert constraints.file_encoding == "utf-8"
         assert constraints.line_ending == "LF"
         assert isinstance(constraints.allowed_imports, list)
+
+    def test_verify_constraints_with_project_json(self, tmp_path):
+        """project.jsonが存在する場合の制約検証テスト"""
+        project_json = tmp_path / "project.json"
+        project_json.write_text(json.dumps({
+            "key": "TEST",
+            "name": "test_project",
+            "constraints": {
+                "external_modules_forbidden": True,
+                "allowed_imports": ["numpy", "pandas"],
+                "file_encoding": "utf-8",
+                "line_ending": "LF",
+                "cooldown_days": 5
+            }
+        }), encoding="utf-8")
+
+        orchestrator = IssueOrchestrator(root_dir=tmp_path)
+        requirements = Requirements(
+            issue_id="TEST-001",
+            title="テスト",
+            description="説明",
+            project_path=tmp_path,
+            related_files=[],
+            priority="high"
+        )
+
+        constraints = orchestrator._verify_constraints(requirements)
+
+        assert constraints.external_modules_forbidden is True
+        assert "numpy" in constraints.allowed_imports
+        assert "sys" in constraints.allowed_imports
+        assert constraints.cooldown_days == 5
 
     @patch('tools.agent_client.AgentClient.call_agent')
     def test_generate_implementation_plan(self, mock_call_agent, tmp_path):
@@ -233,14 +325,16 @@ class TestIssueOrchestrator:
             # pytestが成功するケース
             mock_run.return_value = MagicMock(
                 returncode=0,
-                stdout="5 passed in 0.5s\n",
+                stdout="====== 5 passed, 1 skipped in 0.5s ======\n",
                 stderr=""
             )
 
             test_result = orchestrator._run_tests(tmp_path, [])
 
             assert test_result.passed is True
+            assert test_result.total_tests == 6
             assert test_result.failed_tests == 0
+            assert test_result.duration == 0.5
             assert test_result.error_log == ""
 
     def test_run_tests_failure(self, tmp_path):
@@ -251,14 +345,16 @@ class TestIssueOrchestrator:
             # pytestが失敗するケース
             mock_run.return_value = MagicMock(
                 returncode=1,
-                stdout="3 passed, 2 failed\n",
+                stdout="====== 3 passed, 2 failed in 0.8s ======\n",
                 stderr="AssertionError: test failed\n"
             )
 
             test_result = orchestrator._run_tests(tmp_path, [])
 
             assert test_result.passed is False
-            assert test_result.failed_tests == 1
+            assert test_result.total_tests == 5
+            assert test_result.failed_tests == 2
+            assert test_result.duration == 0.8
             assert "AssertionError" in test_result.error_log
 
     def test_run_tests_timeout(self, tmp_path):
@@ -352,7 +448,7 @@ class TestIssueOrchestrator:
 
             assert result.success is False
             assert result.error_log is not None
-            assert "Test failed" in str(result.error_log) or "TestFailureError" in str(result.error_log)
+            assert any(term in str(result.error_log) for term in ["Test failed", "TestFailureError", "Self-Healing"])
 
     def test_merge_python_code(self, tmp_path):
         """ASTマージ機能のテスト"""
@@ -408,6 +504,156 @@ class TestTestFailureError:
         error = TestFailureError(test_result)
         assert error.test_result == test_result
         assert "Tests failed" in str(error)
+
+
+
+class TestUpdateTaskStatus:
+    """_update_task_status_to_doneのテスト"""
+
+    def test_update_task_status_to_done_in_project_path(self, tmp_path):
+        """プロジェクトパス直下のtasks.mdのタスクステータスが[x]に更新されるテスト"""
+        tasks_md = tmp_path / "tasks.md"
+        tasks_md.write_text("""# Tasks
+- [ ] [ARCH-001] タスク1  <!-- priority:medium -->
+- [/] [ARCH-002] タスク2  <!-- priority:medium -->
+- [x] [ARCH-003] タスク3  <!-- priority:medium -->
+""", encoding="utf-8")
+
+        orchestrator = IssueOrchestrator(root_dir=tmp_path)
+        req = Requirements(
+            issue_id="ARCH-002",
+            title="タスク2",
+            description="説明",
+            project_path=tmp_path,
+            related_files=[],
+            priority="medium"
+        )
+
+        orchestrator._update_task_status_to_done(req)
+
+        updated_content = tasks_md.read_text(encoding="utf-8")
+        assert "- [x] [ARCH-002] タスク2" in updated_content
+        assert "- [ ] [ARCH-001] タスク1" in updated_content
+        assert "- [x] [ARCH-003] タスク3" in updated_content
+
+
+
+class TestExecuteBatch:
+    """execute_batchのテスト"""
+
+    def test_execute_batch_success(self, tmp_path, monkeypatch):
+        # 準備: キャッシュディレクトリとモックJSON
+        cache_dir = tmp_path / "tools" / ".cache"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        
+        blocked_json = cache_dir / "blocked.json"
+        blocked_json.write_text(json.dumps({
+            "actionable": ["ARCH-001", "ARCH-002"]
+        }), encoding="utf-8")
+
+        priority_cache = cache_dir / "priority-cache.json"
+        priority_cache.write_text(json.dumps({
+            "issues": [
+                {"id": "ARCH-001", "score": 90.0},
+                {"id": "ARCH-002", "score": 80.0}
+            ]
+        }), encoding="utf-8")
+
+        # tasks.md の準備
+        tasks_md = tmp_path / "tasks.md"
+        tasks_md.write_text("""# Tasks
+- [ ] [ARCH-001] タスク1  <!-- priority:high -->
+- [ ] [ARCH-002] タスク2  <!-- priority:medium -->
+""", encoding="utf-8")
+
+        orchestrator = IssueOrchestrator(root_dir=tmp_path)
+
+        # 1回目のループではARCH-001とARCH-002がある
+        # execute_issueが完了した想定で、2回目のループではactionableリストが空になるようにモックする
+        call_count = 0
+        def mock_execute_issue(issue_id, max_retries=2, dry_run=False):
+            nonlocal call_count
+            call_count += 1
+            # 実行後、blocked.json を書き換えてループを抜けるようにする
+            blocked_json.write_text(json.dumps({
+                "actionable": []
+            }), encoding="utf-8")
+            return ExecutionResult(True, issue_id, {}, None, [], None)
+            
+        monkeypatch.setattr(orchestrator, "execute_issue", mock_execute_issue)
+
+        # subprocess.run をモック
+        from unittest.mock import patch
+        with patch("subprocess.run") as mock_run:
+            # 実行
+            success = orchestrator.execute_batch(dry_run=False)
+
+            assert success is True
+            assert call_count == 1
+            assert mock_run.call_count == 4  # score-issues.py と check-blockers.py (2回ループ分)
+
+    def test_record_execution_history(self, tmp_path):
+        """実行履歴の記録テスト"""
+        orchestrator = IssueOrchestrator(root_dir=tmp_path)
+        
+        test_res = TestResult(
+            passed=True,
+            total_tests=10,
+            failed_tests=0,
+            error_log="",
+            duration=1.5
+        )
+        exec_res = ExecutionResult(
+            success=True,
+            issue_id="TEST-001",
+            context_data={"some": "data"},
+            error_log=None,
+            files_changed=["src/main.py"],
+            test_result=test_res
+        )
+        
+        orchestrator._record_execution_history(exec_res)
+        
+        history_file = tmp_path / "tools" / ".cache" / "execution_history.json"
+        assert history_file.exists()
+        
+        history_data = json.loads(history_file.read_text(encoding="utf-8"))
+        assert "executions" in history_data
+        assert len(history_data["executions"]) == 1
+        
+        record = history_data["executions"][0]
+        assert record["issue_id"] == "TEST-001"
+        assert record["success"] is True
+        assert record["files_changed"] == ["src/main.py"]
+        assert record["test_result"]["total_tests"] == 10
+
+    def test_update_verify_task_status_deletion(self, tmp_path):
+        """検証サブタスク ({issue_id}-v) の自動削除（消去）テスト"""
+        tasks_md = tmp_path / "tasks.md"
+        tasks_md.write_text("""# タスクリスト
+- [ ] [TEST-001] タスクA  <!-- priority:high -->
+  - [ ] [TEST-001-v] TEST-001 の検証  <!-- priority:high parent:TEST-001 blockedby:#TEST-001 type:verify -->
+- [ ] [TEST-002] タスクB  <!-- priority:medium -->
+""", encoding="utf-8")
+
+        orchestrator = IssueOrchestrator(root_dir=tmp_path)
+        requirements = Requirements(
+            issue_id="TEST-001",
+            title="タスクA",
+            description="説明",
+            project_path=tmp_path,
+            related_files=[],
+            priority="high"
+        )
+
+        # 削除実行
+        orchestrator._update_verify_task_status(requirements)
+
+        # 結果確認
+        content = tasks_md.read_text(encoding="utf-8")
+        assert "TEST-001-v" not in content
+        assert "TEST-001" in content
+        assert "TEST-002" in content
 
 
 class TestExecutionResult:

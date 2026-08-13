@@ -76,3 +76,78 @@ def test_add_task_cli_brackets(tmp_path, monkeypatch):
     assert "  - [ ] サブタスク内容" in updated_content
     assert "parent:TFG-001" in updated_content  # メタデータ内でも括弧が除去されて normalized されていること
 
+
+def test_add_task_cli_blockedby(tmp_path, monkeypatch):
+    import subprocess
+    from pathlib import Path
+
+    script_path = Path(__file__).parent.parent / "tools" / "add-task.py"
+    monkeypatch.chdir(tmp_path)
+
+    project_dir = tmp_path / "projects" / "test_proj"
+    project_dir.mkdir(parents=True, exist_ok=True)
+    tasks_md = project_dir / "tasks.md"
+    tasks_md.write_text(
+        "# タスクリスト\n\n## 未着手\n- [ ] [TFG-001] 親タスク\n\n## 進行中\n\n## 完了\n",
+        encoding="utf-8"
+    )
+
+    # --parent と --blockedby を指定して実行
+    cmd = [
+        "uv", "run", "python", str(script_path),
+        "projects/test_proj",
+        "サブタスク内容",
+        "--parent", "TFG-001",
+        "--blockedby", "#TFG-002",
+        "--priority", "high"
+    ]
+    subprocess.run(cmd, capture_output=True, text=True, check=True)
+
+    updated_content = tasks_md.read_text(encoding="utf-8")
+    assert "  - [ ] サブタスク内容" in updated_content
+    assert "parent:TFG-001" in updated_content
+    assert "blockedby:#TFG-002" in updated_content
+
+
+def test_add_verify_subtask_extraction(add_task_mod):
+    # ID抽出関数のテスト
+    assert add_task_mod._extract_task_id("[TFG-005] XMLパーサー") == "TFG-005"
+    assert add_task_mod._extract_task_id("TFG-005 XMLパーサー") == "TFG-005"
+    assert add_task_mod._extract_task_id("TFG-005-v XMLパーサー") == "TFG-005-v"
+    assert add_task_mod._extract_task_id("通常のタスク") == ""
+
+
+def test_add_task_cli_with_verify(tmp_path, monkeypatch):
+    import subprocess
+    from pathlib import Path
+
+    script_path = Path(__file__).parent.parent / "tools" / "add-task.py"
+    monkeypatch.chdir(tmp_path)
+
+    project_dir = tmp_path / "projects" / "test_proj"
+    project_dir.mkdir(parents=True, exist_ok=True)
+    tasks_md = project_dir / "tasks.md"
+    tasks_md.write_text(
+        "# タスクリスト\n\n## 未着手\n\n## 進行中\n\n## 完了\n",
+        encoding="utf-8"
+    )
+
+    # --with-verify を指定して実行
+    cmd = [
+        "uv", "run", "python", str(script_path),
+        "projects/test_proj",
+        "[TFG-005] XMLパーサーの実装",
+        "--priority", "medium",
+        "--with-verify"
+    ]
+    subprocess.run(cmd, capture_output=True, text=True, check=True)
+
+    updated_content = tasks_md.read_text(encoding="utf-8")
+    assert "[TFG-005] XMLパーサーの実装" in updated_content
+    assert "[TFG-005-v] TFG-005 の検証" in updated_content
+    assert "parent:TFG-005" in updated_content
+    assert "blockedby:#TFG-005" in updated_content
+    assert "type:verify" in updated_content
+
+
+

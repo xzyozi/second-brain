@@ -126,6 +126,7 @@ class PromptBuilder:
 
 ## Issue情報
 - **Issue ID**: {requirements.issue_id}
+- **親Issue ID**: {requirements.parent_id if requirements.parent_id else "なし"}
 - **タイトル**: {requirements.title}
 - **説明**: {requirements.description}
 - **優先度**: {requirements.priority}

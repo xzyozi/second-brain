@@ -1,6 +1,6 @@
 ---
 description: 実装・コードレビュー専門。確定仕様に基づいてコードを生成する。
-model: ollama/gemma4-12b-it-Q4_K_M:latest
+model: ollama/gemma-4-py_coder
 temperature: 0.4
 max_tokens: 4000
 ---

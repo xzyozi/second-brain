@@ -1,0 +1,27 @@
+[
+  {
+    "id": "real_task_context",
+    "description": "実在タスク TFG-001 の内容をコンテキストとして渡し、実装指示書が生成されることを確認する",
+    "prompt": "以下のタスクに対する実装指示書を作成してください。\n\n---\n[タスク情報]\nID: TFG-001\nタイトル: docx/xlsx/pptxの「テキスト構造抽出精度」検証のためのアプローチ確立\nプロジェクト: test_file_grep（Office/Textファイルのgrep検索エンジン検証サブプロジェクト）\npriority: medium\n\n[プロジェクト制約]\n- 外部モジュール使用: 許可\n\n出力は必ず「## 実装指示書」セクションから始め、対象ファイル名（例: src/parser.py）を含めてください。\n---",
+    "context_summary": null,
+    "assertions": {
+      "success": true,
+      "parsed_data_keys": ["implementation_plan"],
+      "implementation_plan_min_length": 50,
+      "implementation_plan_contains_any": ["TFG-001", "テキスト", "抽出", "parse", "Parser", "src/"]
+    }
+  },
+  {
+    "id": "constraint_aware",
+    "description": "外部モジュール禁止の制約コンテキストを与え、指示書が制約を守っているか確認する",
+    "prompt": "以下のタスクに対する実装指示書を作成してください。\n\n---\n[タスク情報]\nID: TFG-005\nタイトル: XMLパーサーの実装\nプロジェクト: test_file_grep\npriority: medium\n\n[プロジェクト制約]\n- 外部モジュール使用: 禁止（標準ライブラリのみ使用可）\n- 使用可能なモジュール: sys, os, pathlib, zipfile, xml.etree.ElementTree\n\n出力は必ず「## 実装指示書」セクションから始め、禁止モジュール（lxml, beautifulsoup4, bs4 等）を使用しないよう制約を明示してください。\n---",
+    "context_summary": null,
+    "assertions": {
+      "success": true,
+      "parsed_data_keys": ["implementation_plan"],
+      "implementation_plan_min_length": 30,
+      "implementation_plan_not_contains": ["lxml", "beautifulsoup4", "bs4", "pip install"],
+      "implementation_plan_contains_any": ["xml.etree", "zipfile", "標準ライブラリ", "standard library"]
+    }
+  }
+]
