@@ -1,16 +1,11 @@
 ---
-description: スコアリング→ブロッカー判定→実行計画提示を一括実行する
+description: priority-scoring Skillを使い実行計画を提示する
 agent: orchestrator
 subtask: false
 ---
 
-スコアリングとブロッカー判定を実行します。
+`priority-scoring` Skill を使用し、以下の手順で実行計画を提示してください。
 
-スコアリング結果:
-!`uv run python tools/score-issues.py 2>&1 && echo "---" && cat tools/.cache/priority-cache.json`
-
-ブロッカー判定結果:
-!`uv run python tools/check-blockers.py 2>&1 && echo "---" && cat tools/.cache/blocked.json`
-
-上記のJSONを読み込み、【本日の実行計画】を提示してください。
-actionable リストのうち priority-cache.json のスコア上位3件を選択してください。
+1. `.opencode/skills/priority-scoring/scripts/run_pipeline.py` を実行する
+2. 出力の [ACTIONABLE] セクションから上位3件を選ぶ
+3. Skillに定義されたフォーマットで【本日の実行計画】を提示する

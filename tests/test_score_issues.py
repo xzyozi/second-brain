@@ -156,3 +156,21 @@ class TestParseTasksFile:
         issues = score_issues_mod.parse_tasks_file(sample_tasks_text, "EC", "test-proj")
         for issue in issues:
             assert issue.get("project") == "test-proj"
+
+    def test_dependency_reduces_score(self, score_issues_mod):
+        # 依存関係がないタスクと、あるタスクを用意してスコアを比較する
+        tasks_text = """# Tasks
+- [ ] [EC-001] タスクA  <!-- priority:medium -->
+- [ ] [EC-002] タスクB  <!-- priority:medium blockedby:#EC-001 -->
+"""
+        issues = score_issues_mod.parse_tasks_file(tasks_text, "EC", "test-proj")
+        
+        issue_a = next(i for i in issues if i["id"] == "EC-001")
+        issue_b = next(i for i in issues if i["id"] == "EC-002")
+        
+        # 依存解決度（D）のスコアが タスクA(5) > タスクB(3) であることを確認
+        assert issue_a["axes"]["D"] == 5
+        assert issue_b["axes"]["D"] == 3
+        # 最終スコアも タスクA > タスクB であることを確認
+        assert issue_a["score"] > issue_b["score"]
+

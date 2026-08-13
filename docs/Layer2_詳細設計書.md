@@ -50,6 +50,7 @@ Issueが増加し台帳が育つにつれて、プロンプトが16Kトークン
  ┌────────────────────────────────────────────────────────┐
  │ Step 1: tools/score-issues.py（純粋計算・LLM不使用）   │
  │  ・全衛星の tasks.md と母艦 roadmap.md を横断パース    │
+ │  ・サブタスク（parent:付き行）も親子関係を保持して解析 │
  │  ・4軸スコアを算出                                     │
  │  ・tools/.cache/priority-cache.json を出力             │
  └──────────────────────────┬─────────────────────────────┘
@@ -58,6 +59,7 @@ Issueが増加し台帳が育つにつれて、プロンプトが16Kトークン
  ┌────────────────────────────────────────────────────────┐
  │ Step 2: tools/check-blockers.py（正規表現判定）        │
  │  ・ブロッカー6種(B1〜B6)を確定的に検出                 │
+ │  ・サブタスクの親IDも出力JSONに含めて追跡可能にする     │
  │  ・tools/.cache/blocked.json を出力                    │
  └──────────────────────────┬─────────────────────────────┘
                             │
@@ -94,12 +96,25 @@ $$\text{Score (0〜100)} = \frac{\text{Total}}{42.5} \times 100$$
 
 | 分類ID | ブロッカー種別 | 検出パターン（正規表現） | 対応アクション |
 | --- | --- | --- | --- |
-| **B1** | 仕様不明確 | `仕様未確定|要確認|TBD|spec\?` | LLMに質問事項を列挙させる |
+| **B1** | 仕様不明確 | `仕様未確定\|要確認\|TBD\|spec\?` | LLMに質問事項を列挙させる |
 | **B2** | 依存Issue未完了 | `blockedby:\s*#\w+` | 先行Issueのスコアを繰り上げ |
-| **B3** | 技術的調査未完 | `\[ \]\s*技術調査|spike:\s*open` | 調査タスクを最優先に昇格 |
-| **B4** | レビュー待ち | `waiting.*review|PR.*open` | 人間へ通知のみ・スキップ |
-| **B5** | 外部依存待ち | `waiting.*external|vendor` | スキップ・優先度最低化 |
-| **B6** | リソース不足 | `resource:\s*missing|予算未確定` | 人間へ通知のみ・スキップ |
+| **B3** | 技術的調査未完 | `\[ \]\s*技術調査\|spike:\s*open` | 調査タスクを最優先に昇格 |
+| **B4** | レビュー待ち | `waiting.*review\|PR.*open` | 人間へ通知のみ・スキップ |
+| **B5** | 外部依存待ち | `waiting.*external\|vendor` | スキップ・優先度最低化 |
+| **B6** | リソース不足 | `resource:\s*missing\|予算未確定` | 人間へ通知のみ・スキップ |
+
+> [!IMPORTANT]
+> **ブロッカー判定の確実性向上に関するガイドライン**
+> 正規表現による自動検出パターンだけに依存せず、以下の双方のフェーズでドキュメントやコードを直接走査・確認するアプローチを併用することで、外部依存度や未確定仕様を最も確実に検知する。
+> 1. **①【計画・要件整理フェーズ】（Sisyphus または PM エージェントの開始時）**: READMEや設計書に記載された外部依存関係や前提条件を直接読解し判定する。
+> 2. **②【実装・実行フェーズ】（Executor または Coder 開始時）**: 実装箇所のコードや依存モジュールの実在性を検証する。
+
+#### 3.3.1 依存関係（blockedby）を利用した実行順序制御の仕組み
+本システムでは、大きな機能追加などの依頼時に、1つの巨大なタスクにするのではなく、「依存されない単一モジュール実装」→「既存コードからの呼び出し書き換え」→「結合テスト」のように、1回のコード生成/テストが単体で通りうる最小ステップに分解して `tasks.md` に登録する。
+その際、後続タスクは先行タスクへの依存関係（`blockedby:#先行ID`）をメタデータとして保持する。
+
+`tools/check-blockers.py` は、この `blockedby` 記述を検出し、先行タスクが未完了（statusが `done` 以外）である場合に、当該タスクを `B2（依存Issue未完了）` ブロッカーとして判定する。
+これにより、Orchestrator が `tools/.cache/blocked.json` の `actionable` リストから上位タスクを選ぶ際、自然と依存関係の下流（使われる側・ブロックされていないもの）から順番に実行計画に選定され、安全に1件ずつ Executor へ引き渡されるようになる。
 
 ### 3.4 Step 3：コマンド定義 (`.opencode/commands/orchestrate.md`)
 
@@ -140,6 +155,6 @@ Layer 2のループはcronから自動起動することで、Layer 3「常時�
 
 ```bash
 # crontab -e
-0 7 * * * cd ~/second-brain && python3 tools/score-issues.py && python3 tools/check-blockers.py && python3 tools/notify.py --event daily_summary
+0 7 * * * cd ~/second-brain && uv run python tools/score-issues.py && uv run python tools/check-blockers.py && uv run python tools/notify.py --event daily_summary
 
 ```

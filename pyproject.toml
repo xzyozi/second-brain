@@ -13,6 +13,7 @@ dependencies = []
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",
+    "pytest-mock>=3.10.0",
     "ruff>=0.4.0",
 ]
 
@@ -23,6 +24,10 @@ python_files = ["test_*.py"]
 # ルートを PYTHONPATH に追加し、tools/ 配下モジュールを直接インポート可能にする
 pythonpath = ["."]
 addopts = "-v --tb=short"
+markers = [
+    "llm: LLMの実呼び出しを伴うインテグレーションテスト",
+    "eval_simpleqa_real: SimpleQA実LLMベンチマークテスト"
+]
 
 # --- Ruff (高速リンター・フォーマッター) 設定 ---
 [tool.ruff]
@@ -34,3 +39,7 @@ target-version = "py310"
 select = ["E", "F", "I", "UP"]
 # ハイフン付きファイル名をモジュールとして扱う都合上、importlib使用箇所は無視
 ignore = []
+
+[tool.setuptools]
+packages = []
+

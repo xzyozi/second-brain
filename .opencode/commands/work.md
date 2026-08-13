@@ -1,18 +1,11 @@
 ---
-description: 指定されたIssue1件を実行しroadmap.mdの更新を提案する
+description: execute-issue Skillを使いIssue1件を実行する
 agent: executor
 subtask: false
 ---
 
-Issue #$ARGUMENTS を実行します。
+Issue #$ARGUMENTS を実行します。`execute-issue` Skill を使用してください。
 
-現在のIssue状態:
-!`(grep -A 25 "## \[#$ARGUMENTS\]\|## #$ARGUMENTS\b\|## $ARGUMENTS " roadmap.md 2>/dev/null || grep -C 3 "$ARGUMENTS" projects/*/tasks.md 2>/dev/null) | head -28 || echo "Issue $ARGUMENTS が見つかりません"`
-
-関連README:
-!`find projects/ -name "README.md" | xargs grep -l "#$ARGUMENTS" 2>/dev/null | head -1 | xargs cat 2>/dev/null || echo "（関連READMEなし）"`
-
-実装案を提示してください。ファイル変更は提案のみ行い、承認後に実行してください。
-完了後は必ず以下のコマンドを提案してください（直接実行しないこと）：
-  uv run python tools/update-roadmap.py $ARGUMENTS done
-  uv run python tools/notify.py --event task_done --issue $ARGUMENTS --title "（タイトル）"
+1. `.opencode/skills/execute-issue/scripts/get_issue.py $ARGUMENTS` を実行する
+2. [BLOCKED] の場合は中断して報告する
+3. [ACTIONABLE] の場合は実装方針を提示し、承認を得てから進める

@@ -12,15 +12,19 @@
           "name": "Gemma4 12B IT (Q4_K_M)",
           "tools": true
         },
-        "qwen2.5-coder:14b-instruct": {
-          "name": "Qwen2.5 Coder 14B Instruct",
+        "gemma-4-py_coder": {
+          "name": "Gemma 4 Py Coder",
+          "tools": true
+        },
+        "qwen3.6-35B-A3B-UD-IQ4_XS": {
+          "name": "qwen3.6-35B-A3B-UD-IQ4_XS",
           "tools": true
         }
       }
     }
   },
   "model": "ollama/gemma4-12b-it-Q4_K_M:latest",
-  "default_agent": "sisyphus",
+  "default_agent": "pm",
   "agent": {
     "sisyphus": {
       "mode": "primary",
@@ -36,7 +40,8 @@
         "write": false,
         "edit": false,
         "webfetch": false,
-        "websearch": false
+        "websearch": false,
+        "skill": true
       }
     },
     "pm": {
@@ -53,7 +58,8 @@
         "write": false,
         "edit": false,
         "webfetch": false,
-        "websearch": false
+        "websearch": false,
+        "skill": true
       }
     },
     "orchestrator": {
@@ -70,13 +76,14 @@
         "write": false,
         "edit": false,
         "webfetch": false,
-        "websearch": false
+        "websearch": false,
+        "skill": true
       }
     },
     "executor": {
       "mode": "primary",
       "description": "承認済みIssueを1件ずつ実行する。変更は提案→承認のフローを守る",
-      "model": "ollama/qwen2.5-coder:14b-instruct",
+      "model": "ollama/gemma4-12b-it-Q4_K_M:latest",
       "temperature": 0.3,
       "tools": {
         "read": true,
@@ -87,13 +94,14 @@
         "write": true,
         "edit": true,
         "webfetch": false,
-        "websearch": false
+        "websearch": false,
+        "skill": true
       }
     },
     "coder": {
       "mode": "primary",
       "description": "実装・コードレビュー専門。確定仕様に基づいてコードを生成する",
-      "model": "ollama/qwen2.5-coder:14b-instruct",
+      "model": "ollama/gemma-4-py_coder",
       "temperature": 0.4,
       "tools": {
         "read": true,
@@ -104,7 +112,8 @@
         "write": true,
         "edit": true,
         "webfetch": false,
-        "websearch": false
+        "websearch": false,
+        "skill": true
       }
     }
   },
@@ -112,11 +121,6 @@
     "edit": "ask",
     "bash": {
       "*": "ask",
-      "python3 tools/score-issues.py*": "allow",
-      "python3 tools/check-blockers.py*": "allow",
-      "python3 tools/add-task.py*": "allow",
-      "python3 tools/notify.py*": "allow",
-      "python3 tools/update-roadmap.py*": "ask",
       "uv run python tools/score-issues.py*": "allow",
       "uv run python tools/check-blockers.py*": "allow",
       "uv run python tools/add-task.py*": "allow",
@@ -126,6 +130,16 @@
       "git push*": "ask",
       "rm -rf *": "deny",
       "rm -f *": "ask"
+    }
+  },
+  "mcp": {
+    "ripgrep-mcp-server": {
+      "type": "local",
+      "command": [
+        "python3",
+        "../MCP/run.py",
+        "ripgrep-mcp-server"
+      ]
     }
   },
   "instructions": [

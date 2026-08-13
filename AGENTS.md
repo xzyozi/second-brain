@@ -1,30 +1,65 @@
-# Second Brain OS — AGENTS.md（憲法ファイル）
+# Second Brain OS — AGENTS.md（憲法ファイル）Rev.3.0 (Gemma統合版)
 
-OpenCode が全セッションで常時読み込む共通ルール。
-oh-my-opencode 統合版 / Claude Code の CLAUDE.md と互換。
+OpenCode が全セッションで常時読み込む、最小限の絶対ルール。
+詳細な手順は `.opencode/skills/` の各Skillに委譲し、ここには「エージェントが常に守るべき絶対のルール」だけを記述する。
 
 ---
 
-## システム全体の制約 (CRITICAL)
+## 絶対ルール (CRITICAL)
 
-1. **ファイルを直接書き換える前に必ず人間に確認を求めること。**
+1. **破壊的な変更（ファイル削除・上書き・git push等）は必ず人間に確認すること。**
 2. **git commit は自分で実行せず、常にコマンド提案にとどめること。**
-3. **tasks.md の更新は必ず `add-task.py` 経由で行うこと。直接編集は禁止。**
-4. **roadmap.md のステータス変更は `update-roadmap.py` 経由で行うこと。**
-5. **複数の役割を同時に担ってはならない。計画中はコードを書かず、実装中は仕様を変えない。**
-6. **Pythonスクリプトおよびテストを実行する際は、生で `python3` や `pytest` を叩いてはならない。必ず `uv run python tools/...` または `uv run pytest` の形式で実行すること。**
+3. **tasks.md / roadmap.md を直接編集しないこと。** タスクの追加・ステータス更新は、必ず `tools/add-task.py` や `tools/update-roadmap.py` などの専用スクリプトを使用すること。
+4. **複数の役割を同時に担わないこと。** 計画中はコードを書かず、実装中は仕様を変えない。
+5. **生のbashコマンドを即興で組み立てる前に、対応するSkillの `scripts/` に既存のスクリプトがないか確認すること。** ローカルLLMが複雑なコマンドをその場で組み立てるとエラーが起きやすいため、用意されたスクリプトの実行を常に優先する。
+6. **ハルシネーションの自己抑制（スコープ境界の遵守）**:
+   現在アクティブなプロジェクト（`projects/<project-name>`）やタスク以外の目的（例: ユーザー認証、ログイン、プロフィール管理等、既存のキャッシュや類似テンプレートに引っ張られた無関係なTodo）をTodoや実装計画に含めたり実装してはならない。
+7. **プロジェクト/タスクの特定プロトコル（検索除外のバイパス）**:
+   `.gitignore` 等により検索に引っかからない場合を考慮し、タスク情報を特定する際は、まず `projects/` ディレクトリ配下を走査し、各プロジェクト内の `tasks.md` を直接開いてタスク内容を把握すること。
+8. **捏造レポートの禁止**:
+   実際にファイルを新規作成・編集し、テストを実行してパスすることを確認する前に、テキストだけで「変更ファイル」「実装完了」などの完了報告を出力してはならない。必ず物理的にファイル作成・検証を行った上で報告すること。
+9. **Officeファイル生成における外部依存制約**:
+   Officeファイルを生成・テストする際、プロジェクト仕様で外部モジュール（`python-docx`, `openpyxl`等）の利用禁止がある場合は、必ず `zipfile` や `xml.etree` などの Python 標準ライブラリのみを使用し XML を直接組み立てること。
+10. **失敗記録の義務化**:
+    タスク実行失敗時や不足情報の検出時は、単にエラー終了せず、必ず `tools/record-failure.py` 経由で「できなかったこと」と「次回への改善策」をナレッジに記録すること。
+11. **ループ防止ルール**:
+    Sisyphus において、振り分け先エージェントが応答せず同じ依頼が自分に戻ってきた場合は、ルーティング出力を繰り返してはならない。プロジェクトの現状を把握し、自らヒアリングや提案を代行すること（1会話につきルーティング出力は最大1回まで）。
+12. **依存関係を考慮した最小テスト通過単位へのタスク分解・順序制御**:
+    大きな機能追加の依頼時は、1回のコード生成ごとにテストが単体で通りうる最小ステップ（例：「依存されない単一モジュール実装」→「既存コードからの呼び出し書き換え」→「結合テスト」）に分解し、依存順にサブタスクとして `tasks.md` に登録しなければならない。後続タスクには必ず `blockedby:#ID` メタデータを付与し、Orchestratorおよび実行フェーズでは、依存関係の下流（使われる側・ブロックされていないもの）から順に1件ずつ Executor へ引き渡して実行させなければならない。
 
 ---
 
-## エージェント役割マップ（oh-my-opencode 統合版）
+## Progressive Disclosure（コンテキスト管理方針）
 
-| エージェント     | 役割・担当                         | モデル        | write | bash | web |
-|--------------|----------------------------------|-------------|-------|------|-----|
-| **sisyphus** | 全体統括・タスク分解・エージェント振り分け | 7B-16k      | ❌    | ✅(read) | ❌ |
-| **pm**       | 壁打ち・要件整理・README構造化       | 7B-16k      | ❌    | ❌   | ❌ |
-| **orchestrator** | 優先度スコア読取・実行計画提示     | 7B-16k      | ❌    | ✅(read) | ❌ |
-| **executor** | 承認済みIssueの1件実行             | 7B-16k      | ✅    | ✅   | ❌ |
-| **coder**    | 実装・コード生成・レビュー           | 14B         | ✅    | ✅   | ❌ |
+このプロジェクトは Agent Skills 標準に従う。起動時にロードされるのは各Skillの `name` と `description` のみ（数百トークン程度）。
+タスクの内容が一致した場合にのみ、該当Skillの本文と `scripts/` が読み込まれる。
+これにより、常時 AGENTS.md に全手順を書き込む必要がなくなり、コンテキスト消費を抑えながら詳細な手順書を多数保持できる。
+
+## 利用可能な Skills 一覧
+
+| Skill名 | 使用場面 | 同梱スクリプト |
+|---|---|---|
+| `priority-scoring` | 優先度判断・実行計画の提示 | `run_pipeline.py` |
+| `execute-issue` | 指定Issueの内容取得・実行方針の決定 | `get_issue.py` |
+| `new-project-intake` | 新規プロジェクトの壁打ち・雛形生成 | `scaffold_project.py` |
+| `notify-event` | 通知の送信（既存 `tools/notify.py` を使用） | なし |
+| `code-implementation` | コード実装時の規約・チェックリスト | なし |
+
+各Skillの詳細は `.opencode/skills/<name>/SKILL.md` を参照。
+
+---
+
+## エージェント役割マップ (Gemma前提)
+
+| エージェント | 役割・担当 | モデル | 主に使うSkill |
+|---|---|---|---|
+| **sisyphus** | 全体統括・タスク分解・エージェント振り分け | Gemma4 12B | （振り分けのみ、Skill不使用） |
+| **pm** | 壁打ち・要件整理・README構造化 | Gemma4 12B | `new-project-intake` |
+| **orchestrator** | 優先度スコア読取・実行計画提示 | Gemma4 12B | `priority-scoring` |
+| **executor** | 承認済みIssueの1件実行 | Gemma4 12B | `execute-issue` |
+| **coder** | 実装・コード生成・レビュー | gemma-4-py_coder | `code-implementation` |
+
+* ※ 基本モデルは `ollama/gemma4-12b-it-Q4_K_M:latest` を使用（coder エージェントのみ `ollama/gemma-4-py_coder` を使用）。
 
 ---
 
@@ -32,48 +67,23 @@ oh-my-opencode 統合版 / Claude Code の CLAUDE.md と互換。
 
 Sisyphus はすべての入口。以下のルールで他エージェントへ振り分ける。
 
-| 入力の性質                              | 振り先         |
-|--------------------------------------|-------------|
-| 新規プロジェクト発足・要件整理・壁打ち     | `pm`        |
-| 「今日何から着手すべきか」「優先度を確認」  | `orchestrator` |
-| 承認済みIssueの実行・ファイル変更        | `executor`  |
-| コード実装・レビュー・リファクタリング     | `coder`     |
-| 上記に当てはまらない複合タスク           | Sisyphus 自身が対応 |
+| 入力の性質 | 振り先 | 対応Skill |
+|---|---|---|
+| 新規プロジェクト発足・要件整理・壁打ち | pm | `new-project-intake` |
+| 「今日何から着手すべきか」「優先度を確認」 | orchestrator | `priority-scoring` |
+| 承認済みIssueの実行・ファイル変更 | executor | `execute-issue` |
+| コード実装・レビュー・リファクタリング | coder | `code-implementation` |
+| 上記に当てはまらない複合タスク | Sisyphus 自身が対応 | - |
 
 ### Sisyphus の出力フォーマット（振り分け時）
+
+> **注意: このフォーマットは Sisyphus 専用です。pm / orchestrator / executor / coder が使用してはなりません。**
+> 各エージェントは自身のペルソナファイル（`.opencode/agents/<name>.md`）に記載された役割と出力形式にのみ従ってください。
+
 ```
 【タスク分析】
 入力の性質: （1行で分類）
 振り先エージェント: <name>
 理由: （1文）
-推奨コマンド: /<command> または `opencode run --agent <name> "<指示>"`
+推奨コマンド: `opencode run --agent <name> "<具体的な指示>"`
 ```
-
----
-
-## スクリプト駆動パターン（全エージェント共通）
-
-タスク・Issue の更新が必要になった場合は「提案」のみ行う：
-
-```bash
-# タスク追加
-uv run python tools/add-task.py projects/<name> "タスク内容" --priority high
-
-# Issue ステータス更新
-uv run python tools/update-roadmap.py <issue_id> done
-
-# 通知送信
-uv run python tools/notify.py --event task_done --issue <id> --title "<title>"
-```
-
----
-
-## 自動発火プロトコル
-
-| トリガー               | コマンド / エージェント            |
-|---------------------|-------------------------------|
-| 新規プロジェクト発足    | `/new-proj <name>` → pm       |
-| 優先度判断             | `/orchestrate` → orchestrator |
-| Issue実行             | `/work <id>` → executor       |
-| 複合指示・振り分け      | `ocs "<指示>"` → sisyphus     |
-| 実装作業               | `ocb "<指示>"` → coder        |
